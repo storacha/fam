@@ -17,7 +17,7 @@ const getEntries = async ({ root, page, size, prefix }: { root: UnknownLink, pag
   return dagJSON.parse(result)
 }
 
-export const ObjectsPage = () => {
+export const Objects = () => {
   const params = useParams()
   const { search } = useLocation()
   const navigate = useNavigate()

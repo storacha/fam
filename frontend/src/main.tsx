@@ -6,7 +6,8 @@ import { Layout as AuthLayout } from './auth/Layout'
 import { Index as AuthIndex } from './auth/Index'
 import { Layout as BucketLayout } from './bucket/Layout'
 import { Index as BucketIndex } from './bucket/Index'
-import { ObjectsPage as BucketObjectsPage } from './bucket/ObjectsPage'
+import { Objects as BucketObjects } from './bucket/Objects'
+import { Import as BucketImport } from './bucket/Import'
 
 const container = document.getElementById('root')
 const root = createRoot(container!)
@@ -20,7 +21,8 @@ root.render(
         </Route>
         <Route path='/bucket' element={<BucketLayout />}>
           <Route index element={<BucketIndex />} />
-          <Route path=":did" element={<BucketObjectsPage />} />
+          <Route path='import' element={<BucketImport />} />
+          <Route path=":did" element={<BucketObjects />} />
         </Route>
       </Routes>
     </BrowserRouter>

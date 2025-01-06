@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/ipfs/go-cid"
+	leveldb "github.com/ipfs/go-ds-leveldb"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/storacha/fam/store"
 )
+
+var log = logging.Logger("app")
 
 func mustParse(s string) ipld.Link {
 	c, err := cid.Parse(s)
@@ -63,7 +70,8 @@ var placeholderEntries = Entries{
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx      context.Context
+	userdata *store.UserDataStore
 }
 
 // NewApp creates a new App application struct
@@ -75,19 +83,91 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalln("getting user home directory: %w", err)
+	}
+
+	dataDir, err := mkdirp(homeDir, ".fam")
+	if err != nil {
+		log.Fatalln("creating data directory: %w", err)
+	}
+
+	dstore, err := leveldb.NewDatastore(dataDir, nil)
+	if err != nil {
+		log.Fatalln("creating datastore: %w", err)
+	}
+
+	userdata, err := store.NewUserDataStore(ctx, dstore)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	a.userdata = userdata
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
+func (a *App) shutdown(ctx context.Context) {
+	err := a.userdata.Close()
+	if err != nil {
+		log.Errorln(err)
+	}
 }
 
-func (a *App) Put(bucket string, key string, value string) error {
-	return nil
+func (a *App) Buckets() (string, error) {
+	return "", nil
 }
 
-func (a *App) Del(bucket string, key string) error {
-	return nil
+func (a *App) AddBucket(params string) (string, error) {
+	return "", nil
+}
+
+func (a *App) RemoveBucket(params string) (string, error) {
+	return "", nil
+}
+
+func (a *App) Put(params string) (string, error) {
+	return "", nil
+}
+
+func (a *App) Del(params string) (string, error) {
+	return "", nil
+}
+
+func (a *App) Entries(params string) (string, error) {
+	_, options, err := decodeEntriesParams(params)
+	if err != nil {
+		return "", err
+	}
+
+	size := options.Size
+	if size == 0 {
+		size = 10
+	}
+
+	var entries Entries
+	for _, e := range placeholderEntries {
+		if !strings.HasPrefix(e.Key, options.Prefix) {
+			continue
+		}
+		entries = append(entries, e)
+	}
+
+	if len(entries) == 0 {
+		return encodeEntries(entries)
+	}
+
+	start := options.Page * size
+	if start > int64(len(entries)-1) {
+		return encodeEntries(Entries{})
+	}
+
+	end := start + size
+	if end > int64(len(entries)) {
+		end = int64(len(entries))
+	}
+
+	return encodeEntries(entries[start:end])
 }
 
 type EntriesOptions struct {
@@ -207,38 +287,11 @@ func decodeEntriesParams(input string) (ipld.Link, EntriesOptions, error) {
 	return root, options, nil
 }
 
-func (a *App) Entries(params string) (string, error) {
-	_, options, err := decodeEntriesParams(params)
+func mkdirp(dirpath ...string) (string, error) {
+	dir := path.Join(dirpath...)
+	err := os.MkdirAll(dir, 0755)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("creating directory: %s: %w", dir, err)
 	}
-
-	size := options.Size
-	if size == 0 {
-		size = 10
-	}
-
-	var entries Entries
-	for _, e := range placeholderEntries {
-		if !strings.HasPrefix(e.Key, options.Prefix) {
-			continue
-		}
-		entries = append(entries, e)
-	}
-
-	if len(entries) == 0 {
-		return encodeEntries(entries)
-	}
-
-	start := options.Page * size
-	if start > int64(len(entries)-1) {
-		return encodeEntries(Entries{})
-	}
-
-	end := start + size
-	if end > int64(len(entries)) {
-		end = int64(len(entries))
-	}
-
-	return encodeEntries(entries[start:end])
+	return dir, nil
 }
