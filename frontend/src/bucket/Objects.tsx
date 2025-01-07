@@ -1,21 +1,13 @@
 import { MouseEventHandler, useState, useEffect, FormEvent, FormEventHandler, ChangeEventHandler } from 'react'
-import { useParams, useLocation, useNavigate, NavLink, Link } from 'react-router'
+import { useParams, useLocation, useNavigate, NavLink, Link as ExternalLink } from 'react-router'
 import { RectangleStackIcon, PlusIcon, ShareIcon, Square2StackIcon, ArrowTopRightOnSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { UnknownLink } from 'multiformats'
-import { parse as parseLink } from 'multiformats/link'
-import * as dagJSON from '@ipld/dag-json'
-import { DID } from '@ucanto/interface'
+import { Link, Version } from 'multiformats'
 import { parse as parseDID } from '@ipld/dag-ucan/did'
-import { Entries } from '../../wailsjs/go/main/App'
+import * as API from '../api'
 
-type Object = [key: string, value: UnknownLink]
+import type { Object } from '../api'
 
 const PAGE_SIZE = 10
-
-const getEntries = async ({ root, page, size, prefix }: { root: UnknownLink, page?: number, size?: number, prefix?: string }): Promise<Object[]> => {
-  const result = await Entries(dagJSON.stringify({ root, page, size, prefix }))
-  return dagJSON.parse(result)
-}
 
 export const Objects = () => {
   const params = useParams()
@@ -29,11 +21,23 @@ export const Objects = () => {
   const prefix = searchParams.get('prefix') ?? ''
   const [objects, setObjects] = useState<Object[]>([])
   const [selections, setSelections] = useState<Record<string, Object>>({})
-  const [root, setRoot] = useState(parseLink('bafybeibrqc2se2p3k4kfdwg7deigdggamlumemkiggrnqw3edrjosqhvnm'))
+  const [root, setRoot] = useState<Link<unknown, number, number, Version>|undefined>()
 
   useEffect(() => {
-    (async () => setObjects(await getEntries({ root, page, size, prefix })))()
-  }, [page, size, prefix])
+    (async () => {
+      const root = await API.root(bucket)
+      if (root.error) throw root.error // TODO handle error
+      setRoot(root.ok)
+    })()
+  }, [bucket, page, size, prefix])
+
+  useEffect(() => {
+    (async () => {
+      const objects = await API.entries(bucket, { page, size, prefix })
+      if (objects.error) return console.error(objects.error) // TODO handle error
+      setObjects(objects.ok)
+    })()
+  }, [bucket, page, size, prefix])
 
   const handlePrefixChange = (prefix: string) => {
     const searchParams = new URLSearchParams({
@@ -46,8 +50,9 @@ export const Objects = () => {
   }
 
   const handlePageChange = async (page: number) => {
-    const entries = await getEntries({ root, page, size, prefix })
-    if (!entries.length) return
+    const objects = await API.entries(bucket, { page, size, prefix })
+    if (objects.error) return console.error(objects.error) // TODO handle error
+    if (!objects.ok.length) return
 
     const searchParams = new URLSearchParams({
       page: page.toString(),
@@ -83,11 +88,10 @@ export const Objects = () => {
             {page === 0 && prefix === '' && !objects.length ? (
               <div className='flex flex-col justify-center h-full'>
                 <p className='font-epilogue text-center mb-2'>No Objects</p>
-                <p className='font-epilogue text-hot-red hover:text-black text-sm text-center cursor-pointer'>
-                  <NavLink to={`/bucket/${bucket}/put`} title='Put Object' className='inline-block mr-1 align-text-bottom'>
-                    <PlusIcon className='size-4' />
+                <p className='font-epilogue text-hot-red hover:text-black text-sm text-center'>
+                  <NavLink to={`/bucket/${bucket}/put`} title='Put Object'>
+                    <PlusIcon className='size-4 inline-block mr-1 align-text-bottom' /> Put an Object
                   </NavLink>
-                  Put an Object
                 </p>
               </div>
             ) : (
@@ -98,12 +102,21 @@ export const Objects = () => {
             )}
           </div>
           <div className='flex-none py-4'>
-            <div className='font-mono text-xs text-center text-gray-400'>
+            <div className='font-mono text-xs text-center text-gray-600'>
               {params.did}
               <button type='button' className='hover:text-black px-1' title='Copy Bucket DID'>
                 <Square2StackIcon className='inline-block size-4' />
               </button>
             </div>
+            {root ? (
+              <div className='font-mono text-xs text-center text-gray-400'>
+                {root.toString()}
+                <button type='button' className='hover:text-black px-1' title='Copy Bucket root CID'>
+                  <Square2StackIcon className='inline-block size-4' />
+                </button>
+              </div>
+            ) : null}
+            
           </div>
         </div>
       </div>
@@ -189,10 +202,10 @@ const ObjectList = ({ objects, selections, onSelectionsChange }: ObjectListProps
                   </div>
                 </th>
                 <td className='px-6 py-4'>
-                  <Link to={`https://w3s.link/ipfs/${value}`} className='block font-mono text-xs whitespace-nowrap hover:text-hot-red'>
+                  <a href='#' className='block font-mono text-xs whitespace-nowrap hover:text-hot-red' onClick={e => { e.preventDefault(); API.openExternalURL(`https://w3s.link/ipfs/${value}`) }}>
                     {value.toString()}
                     <ArrowTopRightOnSquareIcon className='inline-block size-4 ml-1 align-text-bottom' />
-                  </Link>
+                  </a>
                 </td>
               </tr>
             )

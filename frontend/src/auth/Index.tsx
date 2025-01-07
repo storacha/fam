@@ -1,16 +1,8 @@
-import { NavLink, Link } from 'react-router'
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router'
 
 export const Index = () => {
-  return (
-    <div>
-      <NavLink
-        to="/bucket/did:key:z6MkrWjRmTqtEtyvwXgQknMniPzdsCWsLoxkZXJGdbSJx1uk"
-        className={({ isActive }) =>
-          isActive ? "active" : ""
-        }
-      >
-        Bucket: Test
-      </NavLink>
-    </div>
-  )
+  const navigate = useNavigate()
+  useEffect(() => { navigate('/bucket') })
+  return null
 }

@@ -23,7 +23,7 @@ var DefaultKey = "default"
 type UserDataStore struct {
 	dstore  ds.Datastore
 	keys    bucket.Bucket[principal.Signer]
-	grants  bucket.Bucket[delegation.Delegation]
+	proofs  bucket.Bucket[delegation.Delegation]
 	buckets map[did.DID]bucket.Bucket[ipld.Link]
 }
 
@@ -32,24 +32,24 @@ func (userdata *UserDataStore) ID(ctx context.Context) (principal.Signer, error)
 	return userdata.keys.Get(ctx, DefaultKey)
 }
 
-func (userdata *UserDataStore) AddBucket(ctx context.Context, dlg delegation.Delegation) (bucket.Bucket[ipld.Link], error) {
+func (userdata *UserDataStore) AddBucket(ctx context.Context, proof delegation.Delegation) (did.DID, error) {
 	bucketID := did.Undef
 	var canMutateClock bool
 	var canUpload bool
-	for _, c := range dlg.Capabilities() {
+	for _, c := range proof.Capabilities() {
 		if bucketID == did.Undef {
 			id, err := did.Parse(c.With())
 			if err != nil {
-				return nil, err
+				return did.Undef, err
 			}
 			bucketID = id
 		} else {
 			id, err := did.Parse(c.With())
 			if err != nil {
-				return nil, err
+				return did.Undef, err
 			}
 			if id != bucketID {
-				return nil, errors.New("capabilities do not reference the same resource")
+				return did.Undef, errors.New("capabilities do not reference the same resource")
 			}
 		}
 
@@ -66,22 +66,22 @@ func (userdata *UserDataStore) AddBucket(ctx context.Context, dlg delegation.Del
 	}
 
 	if !canMutateClock {
-		return nil, errors.New("missing capability to mutate merkle clock")
+		return did.Undef, errors.New("missing capability to mutate merkle clock")
 	}
 	if !canUpload {
-		return nil, errors.New("missing capability to upload data")
+		return did.Undef, errors.New("missing capability to upload data")
 	}
 
-	err := userdata.grants.Put(ctx, bucketID.String(), dlg)
+	err := userdata.proofs.Put(ctx, bucketID.String(), proof)
 	if err != nil {
-		return nil, err
+		return did.Undef, err
 	}
 
-	return userdata.Bucket(ctx, bucketID)
+	return bucketID, nil
 }
 
 func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) error {
-	err := userdata.grants.Del(ctx, id.String())
+	err := userdata.proofs.Del(ctx, id.String())
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) err
 // Buckets retrieves the list of buckets (and their corresponding delegations).
 func (userdata *UserDataStore) Buckets(ctx context.Context) (map[did.DID]delegation.Delegation, error) {
 	buckets := map[did.DID]delegation.Delegation{}
-	for entry, err := range userdata.grants.Entries(ctx) {
+	for entry, err := range userdata.proofs.Entries(ctx) {
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +111,7 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 		return bucket, nil
 	}
 	// ensure it exists
-	if _, err := userdata.grants.Get(ctx, id.String()); err != nil {
+	if _, err := userdata.proofs.Get(ctx, id.String()); err != nil {
 		return nil, err
 	}
 	// TODO: verify delegation is still valid
@@ -153,8 +153,8 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	}
 	log.Infof("agent ID: %s", id.DID().String())
 
-	log.Debugln("creating grants bucket...")
-	grants, err := bucket.NewDelegationBucket(namespace.Wrap(dstore, ds.NewKey("grants/")))
+	log.Debugln("creating proofs bucket...")
+	grants, err := bucket.NewDelegationBucket(namespace.Wrap(dstore, ds.NewKey("proofs/")))
 	if err != nil {
 		return nil, err
 	}

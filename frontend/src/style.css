@@ -71,7 +71,8 @@ html, body {
   border-color: var(--hot-yellow-light);
 }
 .text-hot-red,
-.hover\:text-hot-red:hover {
+.hover\:text-hot-red:hover,
+.group:hover .group-hover\:text-hot-red  {
   color: var(--hot-red);
 }
 .text-hot-yellow {

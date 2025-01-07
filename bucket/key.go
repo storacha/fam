@@ -22,6 +22,10 @@ type KeyBucket struct {
 	values datastore.Datastore
 }
 
+func (kb *KeyBucket) Root() ipld.Link {
+	return kb.bucket.Root()
+}
+
 func (kb *KeyBucket) Entries(ctx context.Context, opts ...pail.EntriesOption) iter.Seq2[Entry[principal.Signer], error] {
 	return func(yield func(Entry[principal.Signer], error) bool) {
 		for entry, err := range kb.bucket.Entries(ctx, opts...) {

@@ -6,13 +6,9 @@ import (
 	"io"
 	"iter"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/multiformats/go-multicodec"
-	"github.com/multiformats/go-multihash"
 	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-ucanto/core/delegation"
 )
@@ -20,6 +16,10 @@ import (
 type DelegationBucket struct {
 	bucket Bucket[ipld.Link]
 	values datastore.Datastore
+}
+
+func (db *DelegationBucket) Root() ipld.Link {
+	return db.bucket.Root()
 }
 
 func (db *DelegationBucket) Entries(ctx context.Context, opts ...pail.EntriesOption) iter.Seq2[Entry[delegation.Delegation], error] {
@@ -71,17 +71,7 @@ func (db *DelegationBucket) Put(ctx context.Context, key string, dlg delegation.
 		return fmt.Errorf("putting delegation: %w", err)
 	}
 
-	c, err := cid.Prefix{
-		Version:  1,
-		Codec:    uint64(multicodec.Car),
-		MhType:   multihash.SHA2_256,
-		MhLength: -1,
-	}.Sum(dlgBytes)
-	if err != nil {
-		return fmt.Errorf("hashing delegation archive: %w", err)
-	}
-
-	return db.bucket.Put(ctx, key, cidlink.Link{Cid: c})
+	return db.bucket.Put(ctx, key, dlg.Link())
 }
 
 func (db *DelegationBucket) Del(ctx context.Context, key string) error {

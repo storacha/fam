@@ -8,6 +8,7 @@ import { Layout as BucketLayout } from './bucket/Layout'
 import { Index as BucketIndex } from './bucket/Index'
 import { Objects as BucketObjects } from './bucket/Objects'
 import { Import as BucketImport } from './bucket/Import'
+import { Put as BucketPut } from './bucket/Put'
 
 const container = document.getElementById('root')
 const root = createRoot(container!)
@@ -23,6 +24,7 @@ root.render(
           <Route index element={<BucketIndex />} />
           <Route path='import' element={<BucketImport />} />
           <Route path=":did" element={<BucketObjects />} />
+          <Route path=":did/put" element={<BucketPut />} />
         </Route>
       </Routes>
     </BrowserRouter>

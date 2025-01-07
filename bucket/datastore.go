@@ -47,6 +47,10 @@ type DsBucket struct {
 	blocks block.Fetcher
 }
 
+func (bucket *DsBucket) Root() ipld.Link {
+	return bucket.root
+}
+
 func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
@@ -98,7 +102,11 @@ func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter
 		defer bucket.mutex.RUnlock()
 
 		for e, err := range pail.Entries(ctx, bucket.blocks, bucket.root, opts...) {
-			if !yield(Entry[ipld.Link]{e.Key, e.Value}, err) || err != nil {
+			if err != nil {
+				yield(Entry[ipld.Link]{}, err)
+				return
+			}
+			if !yield(Entry[ipld.Link]{e.Key, e.Value}, nil) {
 				return
 			}
 		}
