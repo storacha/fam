@@ -127,7 +127,13 @@ func (a *App) Root(params string) (string, error) {
 		return "", err
 	}
 
-	return marshalJSON(Bytes(bk.Root().Binary()))
+	root, err := bk.Root(a.ctx)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+
+	return marshalJSON(Bytes(root.Binary()))
 }
 
 func (a *App) Put(params string) (string, error) {
@@ -149,7 +155,13 @@ func (a *App) Put(params string) (string, error) {
 		return "", err
 	}
 
-	return marshalJSON(Bytes(bk.Root().Binary()))
+	root, err := bk.Root(a.ctx)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+
+	return marshalJSON(Bytes(root.Binary()))
 }
 
 func (a *App) Del(params string) (string, error) {

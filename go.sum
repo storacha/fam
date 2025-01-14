@@ -433,8 +433,8 @@ github.com/spf13/cobra v1.2.1/go.mod h1:ExllRjgxM/piMAM+3tAZvg8fsklGAf3tPfi+i8t6
 github.com/spf13/jwalterweatherman v1.1.0/go.mod h1:aNWZUN0dPAAO/Ljvb5BEdw96iTZ0EXowPYD95IqWIGo=
 github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/viper v1.8.1/go.mod h1:o0Pch8wJ9BVSWGQMbra6iw0oQ5oktSIBaujf1rJH9Ns=
-github.com/storacha/go-pail v0.0.0-20250105155100-a4f5bd3202cf h1:X9IvfGcr4/F2FqBnUt+uWyi/805yZTgIQ6RRlrhisbk=
-github.com/storacha/go-pail v0.0.0-20250105155100-a4f5bd3202cf/go.mod h1:fnCw+ADcFzZlnWdJBzMicE2kxg1w8sH+IzQ9Nw3bwyI=
+github.com/storacha/go-pail v0.0.0-20250114110711-547618938b52 h1:DhaMagLyVirLvOLY5kJ4eXgYkaIpdjuyJF4gzl3zvXM=
+github.com/storacha/go-pail v0.0.0-20250114110711-547618938b52/go.mod h1:fnCw+ADcFzZlnWdJBzMicE2kxg1w8sH+IzQ9Nw3bwyI=
 github.com/storacha/go-ucanto v0.2.0 h1:P5s+B2mCKdJX0yC89f15czfqHy7lZGWdjAwmq9/Iip0=
 github.com/storacha/go-ucanto v0.2.0/go.mod h1:7ba9jAgqmwlF/JfyFUQcGV07uiYNlmJNu8qH4hHtrJk=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

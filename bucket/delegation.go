@@ -18,8 +18,8 @@ type DelegationBucket struct {
 	values datastore.Datastore
 }
 
-func (db *DelegationBucket) Root() ipld.Link {
-	return db.bucket.Root()
+func (db *DelegationBucket) Root(ctx context.Context) (ipld.Link, error) {
+	return db.bucket.Root(ctx)
 }
 
 func (db *DelegationBucket) Entries(ctx context.Context, opts ...pail.EntriesOption) iter.Seq2[Entry[delegation.Delegation], error] {

@@ -7,26 +7,25 @@ import (
 	"iter"
 	"sync"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/storacha/go-pail"
+	"github.com/storacha/fam/bucket/head"
+	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-pail/block"
-	"github.com/storacha/go-pail/shard"
+	"github.com/storacha/go-pail/crdt"
 )
 
 var log = logging.Logger("datastore")
 
-var rootKey = datastore.NewKey("root")
+var headKey = datastore.NewKey("head")
 
-type DsBlockFetcher struct {
-	dstore datastore.Datastore
+type DsBlockstore struct {
+	data datastore.Datastore
 }
 
-func (f *DsBlockFetcher) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
-	b, err := f.dstore.Get(ctx, datastore.NewKey(link.String()))
+func (bs *DsBlockstore) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
+	b, err := bs.data.Get(ctx, datastore.NewKey(link.String()))
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
 			return nil, fmt.Errorf("getting block: %s: %w", link, ErrNotFound)
@@ -36,47 +35,90 @@ func (f *DsBlockFetcher) Get(ctx context.Context, link ipld.Link) (block.Block, 
 	return block.New(link, b), nil
 }
 
-func NewDsBlockFetcher(dstore datastore.Datastore) *DsBlockFetcher {
-	return &DsBlockFetcher{dstore}
+func (bs *DsBlockstore) Put(ctx context.Context, block block.Block) error {
+	err := bs.data.Put(ctx, datastore.NewKey(block.Link().String()), block.Bytes())
+	if err != nil {
+		return fmt.Errorf("putting block: %w", err)
+	}
+	return nil
+}
+
+func (bs *DsBlockstore) Del(ctx context.Context, link ipld.Link) error {
+	err := bs.data.Delete(ctx, datastore.NewKey(link.String()))
+	if err != nil {
+		return fmt.Errorf("deleting block: %w", err)
+	}
+	return nil
+}
+
+func NewDsBlockstore(dstore datastore.Datastore) *DsBlockstore {
+	return &DsBlockstore{dstore}
 }
 
 type DsBucket struct {
 	mutex  sync.RWMutex
-	root   ipld.Link
-	dstore datastore.Datastore
-	blocks block.Fetcher
+	head   []ipld.Link
+	data   datastore.Datastore
+	blocks *DsBlockstore
 }
 
-func (bucket *DsBucket) Root() ipld.Link {
-	return bucket.root
+func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
+	bucket.mutex.RLock()
+	defer bucket.mutex.RUnlock()
+
+	if len(bucket.head) == 0 {
+		b, err := pail.New()
+		if err != nil {
+			return nil, fmt.Errorf("creating pail: %w", err)
+		}
+		return b.Link(), nil
+	}
+
+	root, _, err := crdt.Root(ctx, bucket.blocks, bucket.head)
+	if err != nil {
+		return nil, err
+	}
+	return root, nil
 }
 
 func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
-	r, diff, err := pail.Put(ctx, bucket.blocks, bucket.root, key, value)
+	res, err := crdt.Put(ctx, bucket.blocks, bucket.head, key, value)
 	if err != nil {
 		return fmt.Errorf("putting %s: %w", key, err)
 	}
 
-	for _, b := range diff.Additions {
+	if res.Event != nil {
+		err = bucket.blocks.Put(ctx, res.Event)
+		if err != nil {
+			return fmt.Errorf("putting merkle clock event: %w", err)
+		}
+	}
+
+	for _, b := range res.Additions {
 		log.Debugf("putting put diff addition: %s", b.Link())
-		err = bucket.dstore.Put(ctx, datastore.NewKey(b.Link().String()), b.Bytes())
+		err = bucket.blocks.Put(ctx, b)
 		if err != nil {
 			return fmt.Errorf("putting diff addition: %w", err)
 		}
 	}
 
-	err = bucket.dstore.Put(context.Background(), rootKey, []byte(r.Binary()))
+	hbytes, err := head.Marshal(res.Head)
 	if err != nil {
-		return fmt.Errorf("updating root: %w", err)
+		return fmt.Errorf("marshalling head: %w", err)
 	}
-	bucket.root = r
 
-	for _, b := range diff.Removals {
+	err = bucket.data.Put(ctx, headKey, hbytes)
+	if err != nil {
+		return fmt.Errorf("updating head: %w", err)
+	}
+	bucket.head = res.Head
+
+	for _, b := range res.Removals {
 		log.Debugf("deleting put diff removal: %s", b.Link())
-		err = bucket.dstore.Delete(ctx, datastore.NewKey(b.Link().String()))
+		err = bucket.blocks.Del(ctx, b.Link())
 		if err != nil {
 			return fmt.Errorf("deleting diff removal: %w", err)
 		}
@@ -89,7 +131,7 @@ func (bucket *DsBucket) Get(ctx context.Context, key string) (ipld.Link, error) 
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 
-	value, err := pail.Get(ctx, bucket.blocks, bucket.root, key)
+	value, err := crdt.Get(ctx, bucket.blocks, bucket.head, key)
 	if err != nil {
 		return nil, fmt.Errorf("getting %s: %w", key, err)
 	}
@@ -101,7 +143,7 @@ func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter
 		bucket.mutex.RLock()
 		defer bucket.mutex.RUnlock()
 
-		for e, err := range pail.Entries(ctx, bucket.blocks, bucket.root, opts...) {
+		for e, err := range crdt.Entries(ctx, bucket.blocks, bucket.head, opts...) {
 			if err != nil {
 				yield(Entry[ipld.Link]{}, err)
 				return
@@ -117,28 +159,40 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
-	r, diff, err := pail.Del(ctx, bucket.blocks, bucket.root, key)
+	res, err := crdt.Del(ctx, bucket.blocks, bucket.head, key)
 	if err != nil {
 		return fmt.Errorf("deleting %s: %w", key, err)
 	}
 
-	for _, b := range diff.Additions {
+	if res.Event != nil {
+		err = bucket.blocks.Put(ctx, res.Event)
+		if err != nil {
+			return fmt.Errorf("putting merkle clock event: %w", err)
+		}
+	}
+
+	for _, b := range res.Additions {
 		log.Debugf("putting delete diff addition: %s", b.Link())
-		err = bucket.dstore.Put(ctx, datastore.NewKey(b.Link().String()), b.Bytes())
+		err = bucket.blocks.Put(ctx, b)
 		if err != nil {
 			return fmt.Errorf("putting diff addition: %w", err)
 		}
 	}
 
-	err = bucket.dstore.Put(context.Background(), rootKey, []byte(r.Binary()))
+	hbytes, err := head.Marshal(res.Head)
 	if err != nil {
-		return fmt.Errorf("updating root: %w", err)
+		return fmt.Errorf("marshalling head: %w", err)
 	}
-	bucket.root = r
 
-	for _, b := range diff.Removals {
+	err = bucket.data.Put(ctx, headKey, hbytes)
+	if err != nil {
+		return fmt.Errorf("updating head: %w", err)
+	}
+	bucket.head = res.Head
+
+	for _, b := range res.Removals {
 		log.Debugf("deleting delete diff removal: %s", b.Link())
-		err = bucket.dstore.Delete(ctx, datastore.NewKey(b.Link().String()))
+		err = bucket.blocks.Del(ctx, b.Link())
 		if err != nil {
 			return fmt.Errorf("deleting diff removal: %w", err)
 		}
@@ -148,37 +202,21 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 }
 
 func NewDsBucket(dstore datastore.Datastore) (*DsBucket, error) {
-	var root ipld.Link
-	b, err := dstore.Get(context.Background(), rootKey)
+	var hd []ipld.Link
+	bs := NewDsBlockstore(dstore)
+	b, err := dstore.Get(context.Background(), headKey)
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
-			log.Warnln("bucket root not found, creating new bucket...")
-
-			rs := shard.NewRoot(nil)
-			rb, err := shard.MarshalBlock(rs)
-			if err != nil {
-				return nil, fmt.Errorf("marshalling pail root: %w", err)
-			}
-			err = dstore.Put(context.Background(), datastore.NewKey(rb.Link().String()), rb.Bytes())
-			if err != nil {
-				return nil, fmt.Errorf("putting pail root block: %w", err)
-			}
-			err = dstore.Put(context.Background(), rootKey, []byte(rb.Link().Binary()))
-			if err != nil {
-				return nil, fmt.Errorf("putting pail root: %w", err)
-			}
-			root = rb.Link()
+			log.Warnln("bucket head not found, creating new bucket...")
 		} else {
 			return nil, fmt.Errorf("getting root: %w", err)
 		}
 	} else {
-		c, err := cid.Cast(b)
+		hd, err = head.Unmarshal(b)
 		if err != nil {
-			return nil, fmt.Errorf("decoding root: %w", err)
+			return nil, fmt.Errorf("unmarshalling head: %w", err)
 		}
-		root = cidlink.Link{Cid: c}
 	}
-	log.Debugf("loading bucket with root: %s", root)
-	blocks := NewDsBlockFetcher(dstore)
-	return &DsBucket{root: root, dstore: dstore, blocks: blocks}, nil
+	log.Debugf("loading bucket with head: %s", hd)
+	return &DsBucket{head: hd, data: dstore, blocks: bs}, nil
 }

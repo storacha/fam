@@ -10,7 +10,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.1-0.20240917223228-6148356a4c2e
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3
-	github.com/storacha/go-pail v0.0.0-20250105155100-a4f5bd3202cf
+	github.com/storacha/go-pail v0.0.0-20250114110711-547618938b52
 	github.com/storacha/go-ucanto v0.2.0
 	github.com/wailsapp/wails/v2 v2.9.2
 )

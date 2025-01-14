@@ -26,7 +26,7 @@ var (
 
 type Bucket[T any] interface {
 	// Root returns the current root CID of the bucket.
-	Root() ipld.Link
+	Root(ctx context.Context) (ipld.Link, error)
 	Get(ctx context.Context, key string) (T, error)
 	Put(ctx context.Context, key string, value T) error
 	Del(ctx context.Context, key string) error
