@@ -13,7 +13,10 @@ import (
 	"github.com/storacha/fam/bucket/head"
 	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-pail/block"
+	"github.com/storacha/go-pail/clock"
 	"github.com/storacha/go-pail/crdt"
+	"github.com/storacha/go-pail/crdt/operation"
+	"github.com/storacha/go-pail/ipld/node"
 )
 
 var log = logging.Logger("datastore")
@@ -59,7 +62,45 @@ type DsBucket struct {
 	mutex  sync.RWMutex
 	head   []ipld.Link
 	data   datastore.Datastore
-	blocks *DsBlockstore
+	blocks Blockstore
+}
+
+func (bucket *DsBucket) Head(ctx context.Context) ([]ipld.Link, error) {
+	bucket.mutex.RLock()
+	defer bucket.mutex.RUnlock()
+	return bucket.head, nil
+}
+
+func (bucket *DsBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
+	bucket.mutex.Lock()
+	defer bucket.mutex.Unlock()
+
+	mblocks := block.NewMapBlockstore()
+	_ = mblocks.Put(ctx, evt)
+
+	hd, err := clock.Advance(ctx, block.NewTieredBlockFetcher(mblocks, bucket.blocks), node.BinderFunc[operation.Operation](operation.Bind), bucket.head, evt.Link())
+	if err != nil {
+		return nil, fmt.Errorf("advancing merkle clock: %w", err)
+	}
+
+	// permanently write the event block
+	err = bucket.blocks.Put(ctx, evt)
+	if err != nil {
+		return nil, fmt.Errorf("putting merkle clock event: %w", err)
+	}
+
+	hbytes, err := head.Marshal(hd)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling head: %w", err)
+	}
+
+	err = bucket.data.Put(ctx, headKey, hbytes)
+	if err != nil {
+		return nil, fmt.Errorf("updating head: %w", err)
+	}
+
+	bucket.head = hd
+	return hd, nil
 }
 
 func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
@@ -201,9 +242,8 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 	return nil
 }
 
-func NewDsBucket(dstore datastore.Datastore) (*DsBucket, error) {
+func NewDsBucket(blocks Blockstore, dstore datastore.Datastore) (*DsBucket, error) {
 	var hd []ipld.Link
-	bs := NewDsBlockstore(dstore)
 	b, err := dstore.Get(context.Background(), headKey)
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
@@ -218,5 +258,5 @@ func NewDsBucket(dstore datastore.Datastore) (*DsBucket, error) {
 		}
 	}
 	log.Debugf("loading bucket with head: %s", hd)
-	return &DsBucket{head: hd, data: dstore, blocks: bs}, nil
+	return &DsBucket{head: hd, data: dstore, blocks: blocks}, nil
 }

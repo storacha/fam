@@ -11,7 +11,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/multiformats/go-multihash"
-	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-ucanto/principal"
 	ed25519 "github.com/storacha/go-ucanto/principal/ed25519/signer"
 	rsa "github.com/storacha/go-ucanto/principal/rsa/signer"
@@ -26,7 +25,7 @@ func (kb *KeyBucket) Root(ctx context.Context) (ipld.Link, error) {
 	return kb.bucket.Root(ctx)
 }
 
-func (kb *KeyBucket) Entries(ctx context.Context, opts ...pail.EntriesOption) iter.Seq2[Entry[principal.Signer], error] {
+func (kb *KeyBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[principal.Signer], error] {
 	return func(yield func(Entry[principal.Signer], error) bool) {
 		for entry, err := range kb.bucket.Entries(ctx, opts...) {
 			if err != nil {
@@ -89,8 +88,8 @@ func (kb *KeyBucket) Del(ctx context.Context, key string) error {
 	return kb.bucket.Del(ctx, key)
 }
 
-func NewKeyBucket(dstore datastore.Datastore) (*KeyBucket, error) {
-	bucket, err := NewDsBucket(namespace.Wrap(dstore, datastore.NewKey("shards/")))
+func NewKeyBucket(blocks Blockstore, dstore datastore.Datastore) (*KeyBucket, error) {
+	bucket, err := NewDsBucket(blocks, namespace.Wrap(dstore, datastore.NewKey("shards/")))
 	if err != nil {
 		return nil, err
 	}

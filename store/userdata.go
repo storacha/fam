@@ -116,14 +116,19 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 	}
 	// TODO: verify delegation is still valid
 
+	blocks := bucket.NewDsBlockstore(namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("blocks/bucket/%s/", id.String()))))
 	dstore := namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/", id.String())))
-	bucket, err := bucket.NewDsBucket(dstore)
+	bk, err := bucket.NewDsBucket(blocks, dstore)
+	if err != nil {
+		return nil, err
+	}
+	cbk, err := bucket.NewClockDsBucket(bk, blocks, dstore)
 	if err != nil {
 		return nil, err
 	}
 
-	userdata.buckets[id] = bucket
-	return bucket, nil
+	userdata.buckets[id] = cbk
+	return cbk, nil
 }
 
 func (userdata *UserDataStore) Close() error {
@@ -132,7 +137,10 @@ func (userdata *UserDataStore) Close() error {
 
 func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore, error) {
 	log.Debugln("creating key bucket...")
-	keys, err := bucket.NewKeyBucket(namespace.Wrap(dstore, ds.NewKey("keys/")))
+	keys, err := bucket.NewKeyBucket(
+		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("blocks/keys/"))),
+		namespace.Wrap(dstore, ds.NewKey("keys/")),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +162,10 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	log.Infof("agent ID: %s", id.DID().String())
 
 	log.Debugln("creating proofs bucket...")
-	grants, err := bucket.NewDelegationBucket(namespace.Wrap(dstore, ds.NewKey("proofs/")))
+	grants, err := bucket.NewDelegationBucket(
+		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("blocks/proofs/"))),
+		namespace.Wrap(dstore, ds.NewKey("proofs/")),
+	)
 	if err != nil {
 		return nil, err
 	}

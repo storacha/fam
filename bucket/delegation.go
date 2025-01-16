@@ -9,7 +9,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	"github.com/ipld/go-ipld-prime"
-	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-ucanto/core/delegation"
 )
 
@@ -22,7 +21,7 @@ func (db *DelegationBucket) Root(ctx context.Context) (ipld.Link, error) {
 	return db.bucket.Root(ctx)
 }
 
-func (db *DelegationBucket) Entries(ctx context.Context, opts ...pail.EntriesOption) iter.Seq2[Entry[delegation.Delegation], error] {
+func (db *DelegationBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[delegation.Delegation], error] {
 	return func(yield func(Entry[delegation.Delegation], error) bool) {
 		for entry, err := range db.bucket.Entries(ctx, opts...) {
 			if err != nil {
@@ -78,8 +77,8 @@ func (db *DelegationBucket) Del(ctx context.Context, key string) error {
 	return db.bucket.Del(ctx, key)
 }
 
-func NewDelegationBucket(dstore datastore.Datastore) (*DelegationBucket, error) {
-	bucket, err := NewDsBucket(namespace.Wrap(dstore, datastore.NewKey("shards/")))
+func NewDelegationBucket(blocks Blockstore, dstore datastore.Datastore) (*DelegationBucket, error) {
+	bucket, err := NewDsBucket(blocks, namespace.Wrap(dstore, datastore.NewKey("shards/")))
 	if err != nil {
 		return nil, err
 	}
