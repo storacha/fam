@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/bucket"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/did"
@@ -119,21 +120,27 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 	// TODO: storacha blockstore?
 	// TODO: tiered blockstore local, remote
 
-	blocks := bucket.NewDsBlockstore(namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/blocks/", id.String()))))
-	shards, err := bucket.NewDsBucket(
-		blocks,
-		namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/shards/", id.String()))),
+	pfx := ds.NewKey(fmt.Sprintf("bucket/%s", id.String()))
+	bk, err := bucket.NewDsClockBucket(
+		block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks"))),
+		namespace.Wrap(userdata.dstore, pfx.ChildString("shards")),
 	)
 	if err != nil {
 		return nil, err
 	}
-	cbk, err := bucket.NewClockDsBucket(bk, blocks, dstore)
+
+	pfx = pfx.ChildString("remotes")
+	rbk, err := bucket.NewDsClockBucket(
+		block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks"))),
+		namespace.Wrap(userdata.dstore, pfx.ChildString("shards")),
+	)
+	nbk, err := bucket.NewNetworkClockBucket(bk, bucket.NewRemoteBucket(bk, rbk))
 	if err != nil {
 		return nil, err
 	}
 
-	userdata.buckets[id] = cbk
-	return cbk, nil
+	userdata.buckets[id] = nbk
+	return nbk, nil
 }
 
 func (userdata *UserDataStore) Close() error {
@@ -143,8 +150,8 @@ func (userdata *UserDataStore) Close() error {
 func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore, error) {
 	log.Debugln("creating key bucket...")
 
-	keyshards, err := bucket.NewDsBucket(
-		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("keys/blocks/"))),
+	keyshards, err := bucket.NewDsClockBucket(
+		block.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("keys/blocks/"))),
 		namespace.Wrap(dstore, ds.NewKey("keys/shards/")),
 	)
 	if err != nil {
@@ -169,8 +176,8 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	log.Infof("agent ID: %s", id.DID().String())
 
 	log.Debugln("creating grants bucket...")
-	grantshards, err := bucket.NewDsBucket(
-		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("grants/blocks/"))),
+	grantshards, err := bucket.NewDsClockBucket(
+		block.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("grants/blocks/"))),
 		namespace.Wrap(dstore, ds.NewKey("grants/shards/")),
 	)
 	if err != nil {

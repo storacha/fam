@@ -8,7 +8,7 @@ import (
 )
 
 func NewKeyBucket(bucket Bucket[ipld.Link]) Bucket[principal.Signer] {
-	return NewIdentityBytesBucket(bucket, func(s principal.Signer) ([]byte, error) {
+	return NewIdentityBucket(bucket, func(s principal.Signer) ([]byte, error) {
 		return s.Encode(), nil
 	}, func(b []byte) (principal.Signer, error) {
 		s, err := ed25519.Decode(b)

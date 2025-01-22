@@ -26,13 +26,6 @@ var (
 	WithKeyLessThanOrEqual    = pail.WithKeyLessThanOrEqual
 )
 
-type Blockstore interface {
-	block.Fetcher
-	Put(ctx context.Context, block block.Block) error
-	PutBatch(ctx context.Context, blocks []block.Block) error
-	Del(ctx context.Context, link ipld.Link) error
-}
-
 type Bucket[T any] interface {
 	// Root returns the current root CID of the bucket.
 	Root(ctx context.Context) (ipld.Link, error)
@@ -62,7 +55,7 @@ type Networker interface {
 
 type Remote interface {
 	// Address is the network address of the remote.
-	Address() (peer.AddrInfo, error)
+	Address(ctx context.Context) (peer.AddrInfo, error)
 	// Push local state to the remote.
 	Push(ctx context.Context) error
 	// Pull remote state from the remote.

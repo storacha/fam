@@ -8,7 +8,7 @@ import (
 )
 
 func NewDelegationBucket(bucket Bucket[ipld.Link]) Bucket[delegation.Delegation] {
-	return NewIdentityBytesBucket(bucket, func(d delegation.Delegation) ([]byte, error) {
+	return NewIdentityBucket(bucket, func(d delegation.Delegation) ([]byte, error) {
 		return io.ReadAll(d.Archive())
 	}, func(b []byte) (delegation.Delegation, error) {
 		return delegation.Extract(b)

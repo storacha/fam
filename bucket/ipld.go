@@ -151,12 +151,6 @@ func NewIpldBytesBucket(bucket Bucket[[]byte], encode codec.Encoder, decode code
 	return &IpldBytesBucket{bucket, encode, decode}
 }
 
-// c, err := cid.Prefix{
-// 	Version:  1,
-// 	Codec:    uint64(multicodec.DagCbor),
-// 	MhType:   multihash.SHA2_256,
-// 	MhLength: -1,
-// }.Sum(buf.Bytes())
-// if err != nil {
-// 	return fmt.Errorf("hashing bytes: %w", err)
-// }
+func NewCborBucket(bucket Bucket[[]byte]) Bucket[ipld.Node] {
+	return NewIpldBytesBucket(bucket, dagcbor.Encode, dagcbor.Decode)
+}

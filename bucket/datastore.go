@@ -85,20 +85,20 @@ func NewDsBlockstore(dstore datastore.Datastore) *DsBlockstore {
 	return &DsBlockstore{dstore}
 }
 
-type DsBucket struct {
+type DsClockBucket struct {
 	mutex  sync.RWMutex
 	head   []ipld.Link
 	data   datastore.Datastore
 	blocks Blockstore
 }
 
-func (bucket *DsBucket) Head(ctx context.Context) ([]ipld.Link, error) {
+func (bucket *DsClockBucket) Head(ctx context.Context) ([]ipld.Link, error) {
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 	return bucket.head, nil
 }
 
-func (bucket *DsBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
+func (bucket *DsClockBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -136,7 +136,7 @@ func (bucket *DsBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Li
 	return hd, nil
 }
 
-func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
+func (bucket *DsClockBucket) Root(ctx context.Context) (ipld.Link, error) {
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 
@@ -155,7 +155,7 @@ func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
 	return root, nil
 }
 
-func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) error {
+func (bucket *DsClockBucket) Put(ctx context.Context, key string, value ipld.Link) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -198,7 +198,7 @@ func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) er
 	return nil
 }
 
-func (bucket *DsBucket) Get(ctx context.Context, key string) (ipld.Link, error) {
+func (bucket *DsClockBucket) Get(ctx context.Context, key string) (ipld.Link, error) {
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 
@@ -209,7 +209,7 @@ func (bucket *DsBucket) Get(ctx context.Context, key string) (ipld.Link, error) 
 	return value, nil
 }
 
-func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[ipld.Link], error] {
+func (bucket *DsClockBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[ipld.Link], error] {
 	return func(yield func(Entry[ipld.Link], error) bool) {
 		bucket.mutex.RLock()
 		defer bucket.mutex.RUnlock()
@@ -226,7 +226,7 @@ func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter
 	}
 }
 
-func (bucket *DsBucket) Del(ctx context.Context, key string) error {
+func (bucket *DsClockBucket) Del(ctx context.Context, key string) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -269,7 +269,7 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 	return nil
 }
 
-func NewDsBucket(blocks Blockstore, dstore datastore.Datastore) (*DsBucket, error) {
+func NewDsClockBucket(blocks Blockstore, dstore datastore.Datastore) (*DsClockBucket, error) {
 	var hd []ipld.Link
 	b, err := dstore.Get(context.Background(), headKey)
 	if err != nil {
@@ -285,5 +285,5 @@ func NewDsBucket(blocks Blockstore, dstore datastore.Datastore) (*DsBucket, erro
 		}
 	}
 	log.Debugf("loading bucket with head: %s", hd)
-	return &DsBucket{head: hd, data: dstore, blocks: blocks}, nil
+	return &DsClockBucket{head: hd, data: dstore, blocks: blocks}, nil
 }
