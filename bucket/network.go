@@ -40,7 +40,7 @@ func (cb *ClockDsBucket[T]) Entries(ctx context.Context, opts ...EntriesOption) 
 
 // NewClockDsBucket creates a new [ClockBucket[T]] backed by a [datastore.Datastore].
 func NewClockDsBucket[T any](bucket ClockBucket[T], blocks Blockstore, dstore datastore.Datastore) (*ClockDsBucket[T], error) {
-	remotes, err := NewClockDsRemoteBucket(bucket, blocks, namespace.Wrap(dstore, datastore.NewKey("remotes/")))
+	remotes, err := NewRemoteDsBucket(bucket, blocks, namespace.Wrap(dstore, datastore.NewKey("remotes/")))
 	if err != nil {
 		return nil, err
 	}

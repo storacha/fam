@@ -46,6 +46,33 @@ func (bs *DsBlockstore) Put(ctx context.Context, block block.Block) error {
 	return nil
 }
 
+func (bs *DsBlockstore) PutBatch(ctx context.Context, blocks []block.Block) error {
+	if bds, ok := bs.data.(datastore.Batching); ok {
+		batch, err := bds.Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("creating batch: %w", err)
+		}
+		for _, b := range blocks {
+			err := batch.Put(ctx, datastore.NewKey(b.Link().String()), b.Bytes())
+			if err != nil {
+				return err
+			}
+		}
+		err = batch.Commit(ctx)
+		if err != nil {
+			return fmt.Errorf("comitting batch: %w", err)
+		}
+	} else {
+		for _, b := range blocks {
+			err := bs.Put(ctx, b)
+			if err != nil {
+				return fmt.Errorf("putting block: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func (bs *DsBlockstore) Del(ctx context.Context, link ipld.Link) error {
 	err := bs.data.Delete(ctx, datastore.NewKey(link.String()))
 	if err != nil {
@@ -75,6 +102,12 @@ func (bucket *DsBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Li
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
+	for _, l := range bucket.head {
+		if l == evt.Link() {
+			return bucket.head, nil
+		}
+	}
+
 	mblocks := block.NewMapBlockstore()
 	_ = mblocks.Put(ctx, evt)
 
@@ -83,7 +116,7 @@ func (bucket *DsBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Li
 		return nil, fmt.Errorf("advancing merkle clock: %w", err)
 	}
 
-	// permanently write the event block
+	// permanently write the new event block
 	err = bucket.blocks.Put(ctx, evt)
 	if err != nil {
 		return nil, fmt.Errorf("putting merkle clock event: %w", err)
@@ -131,19 +164,16 @@ func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) er
 		return fmt.Errorf("putting %s: %w", key, err)
 	}
 
+	var additions []block.Block
 	if res.Event != nil {
-		err = bucket.blocks.Put(ctx, res.Event)
-		if err != nil {
-			return fmt.Errorf("putting merkle clock event: %w", err)
-		}
+		additions = append(additions, res.Event)
 	}
-
 	for _, b := range res.Additions {
-		log.Debugf("putting put diff addition: %s", b.Link())
-		err = bucket.blocks.Put(ctx, b)
-		if err != nil {
-			return fmt.Errorf("putting diff addition: %w", err)
-		}
+		additions = append(additions, b)
+	}
+	err = bucket.blocks.PutBatch(ctx, additions)
+	if err != nil {
+		return fmt.Errorf("putting diff addition: %w", err)
 	}
 
 	hbytes, err := head.Marshal(res.Head)
@@ -205,19 +235,16 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 		return fmt.Errorf("deleting %s: %w", key, err)
 	}
 
+	var additions []block.Block
 	if res.Event != nil {
-		err = bucket.blocks.Put(ctx, res.Event)
-		if err != nil {
-			return fmt.Errorf("putting merkle clock event: %w", err)
-		}
+		additions = append(additions, res.Event)
 	}
-
 	for _, b := range res.Additions {
-		log.Debugf("putting delete diff addition: %s", b.Link())
-		err = bucket.blocks.Put(ctx, b)
-		if err != nil {
-			return fmt.Errorf("putting diff addition: %w", err)
-		}
+		additions = append(additions, b)
+	}
+	err = bucket.blocks.PutBatch(ctx, additions)
+	if err != nil {
+		return fmt.Errorf("putting diff addition: %w", err)
 	}
 
 	hbytes, err := head.Marshal(res.Head)

@@ -23,7 +23,7 @@ var DefaultKey = "default"
 type UserDataStore struct {
 	dstore  ds.Datastore
 	keys    bucket.Bucket[principal.Signer]
-	proofs  bucket.Bucket[delegation.Delegation]
+	grants  bucket.Bucket[delegation.Delegation]
 	buckets map[did.DID]bucket.Bucket[ipld.Link]
 }
 
@@ -72,7 +72,7 @@ func (userdata *UserDataStore) AddBucket(ctx context.Context, proof delegation.D
 		return did.Undef, errors.New("missing capability to upload data")
 	}
 
-	err := userdata.proofs.Put(ctx, bucketID.String(), proof)
+	err := userdata.grants.Put(ctx, bucketID.String(), proof)
 	if err != nil {
 		return did.Undef, err
 	}
@@ -81,7 +81,7 @@ func (userdata *UserDataStore) AddBucket(ctx context.Context, proof delegation.D
 }
 
 func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) error {
-	err := userdata.proofs.Del(ctx, id.String())
+	err := userdata.grants.Del(ctx, id.String())
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) err
 // Buckets retrieves the list of buckets (and their corresponding delegations).
 func (userdata *UserDataStore) Buckets(ctx context.Context) (map[did.DID]delegation.Delegation, error) {
 	buckets := map[did.DID]delegation.Delegation{}
-	for entry, err := range userdata.proofs.Entries(ctx) {
+	for entry, err := range userdata.grants.Entries(ctx) {
 		if err != nil {
 			return nil, err
 		}
@@ -111,14 +111,19 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 		return bucket, nil
 	}
 	// ensure it exists
-	if _, err := userdata.proofs.Get(ctx, id.String()); err != nil {
+	if _, err := userdata.grants.Get(ctx, id.String()); err != nil {
 		return nil, err
 	}
 	// TODO: verify delegation is still valid
 
-	blocks := bucket.NewDsBlockstore(namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("blocks/bucket/%s/", id.String()))))
-	dstore := namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/", id.String())))
-	bk, err := bucket.NewDsBucket(blocks, dstore)
+	// TODO: storacha blockstore?
+	// TODO: tiered blockstore local, remote
+
+	blocks := bucket.NewDsBlockstore(namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/blocks/", id.String()))))
+	shards, err := bucket.NewDsBucket(
+		blocks,
+		namespace.Wrap(userdata.dstore, ds.NewKey(fmt.Sprintf("bucket/%s/shards/", id.String()))),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -137,13 +142,15 @@ func (userdata *UserDataStore) Close() error {
 
 func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore, error) {
 	log.Debugln("creating key bucket...")
-	keys, err := bucket.NewKeyBucket(
-		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("blocks/keys/"))),
-		namespace.Wrap(dstore, ds.NewKey("keys/")),
+
+	keyshards, err := bucket.NewDsBucket(
+		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("keys/blocks/"))),
+		namespace.Wrap(dstore, ds.NewKey("keys/shards/")),
 	)
 	if err != nil {
 		return nil, err
 	}
+	keys := bucket.NewKeyBucket(keyshards)
 
 	id, err := keys.Get(ctx, DefaultKey)
 	if errors.Is(err, bucket.ErrNotFound) {
@@ -161,14 +168,15 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	}
 	log.Infof("agent ID: %s", id.DID().String())
 
-	log.Debugln("creating proofs bucket...")
-	grants, err := bucket.NewDelegationBucket(
-		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("blocks/proofs/"))),
-		namespace.Wrap(dstore, ds.NewKey("proofs/")),
+	log.Debugln("creating grants bucket...")
+	grantshards, err := bucket.NewDsBucket(
+		bucket.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("grants/blocks/"))),
+		namespace.Wrap(dstore, ds.NewKey("grants/shards/")),
 	)
 	if err != nil {
 		return nil, err
 	}
+	grants := bucket.NewDelegationBucket(grantshards)
 
 	return &UserDataStore{dstore, keys, grants, map[did.DID]bucket.Bucket[ipld.Link]{}}, nil
 }
