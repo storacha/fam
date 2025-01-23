@@ -10,59 +10,71 @@ import (
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/bucket/head"
 	pail "github.com/storacha/go-pail"
-	"github.com/storacha/go-pail/block"
+	"github.com/storacha/go-pail/clock"
 	"github.com/storacha/go-pail/crdt"
+	"github.com/storacha/go-pail/crdt/operation"
+	"github.com/storacha/go-pail/ipld/node"
 )
 
 var log = logging.Logger("datastore")
 
 var headKey = datastore.NewKey("head")
 
-type DsBlockstore struct {
-	data datastore.Datastore
-}
-
-func (bs *DsBlockstore) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
-	b, err := bs.data.Get(ctx, datastore.NewKey(link.String()))
-	if err != nil {
-		if errors.Is(err, datastore.ErrNotFound) {
-			return nil, fmt.Errorf("getting block: %s: %w", link, ErrNotFound)
-		}
-		return nil, fmt.Errorf("getting block: %s: %w", link, err)
-	}
-	return block.New(link, b), nil
-}
-
-func (bs *DsBlockstore) Put(ctx context.Context, block block.Block) error {
-	err := bs.data.Put(ctx, datastore.NewKey(block.Link().String()), block.Bytes())
-	if err != nil {
-		return fmt.Errorf("putting block: %w", err)
-	}
-	return nil
-}
-
-func (bs *DsBlockstore) Del(ctx context.Context, link ipld.Link) error {
-	err := bs.data.Delete(ctx, datastore.NewKey(link.String()))
-	if err != nil {
-		return fmt.Errorf("deleting block: %w", err)
-	}
-	return nil
-}
-
-func NewDsBlockstore(dstore datastore.Datastore) *DsBlockstore {
-	return &DsBlockstore{dstore}
-}
-
-type DsBucket struct {
+type DsClockBucket struct {
 	mutex  sync.RWMutex
 	head   []ipld.Link
 	data   datastore.Datastore
-	blocks *DsBlockstore
+	blocks block.Blockstore
 }
 
-func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
+func (bucket *DsClockBucket) Head(ctx context.Context) ([]ipld.Link, error) {
+	bucket.mutex.RLock()
+	defer bucket.mutex.RUnlock()
+	return bucket.head, nil
+}
+
+func (bucket *DsClockBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
+	bucket.mutex.Lock()
+	defer bucket.mutex.Unlock()
+
+	for _, l := range bucket.head {
+		if l == evt.Link() {
+			return bucket.head, nil
+		}
+	}
+
+	mblocks := block.NewMapBlockstore()
+	_ = mblocks.Put(ctx, evt)
+
+	hd, err := clock.Advance(ctx, block.NewTieredBlockFetcher(mblocks, bucket.blocks), node.BinderFunc[operation.Operation](operation.Bind), bucket.head, evt.Link())
+	if err != nil {
+		return nil, fmt.Errorf("advancing merkle clock: %w", err)
+	}
+
+	// permanently write the new event block
+	err = bucket.blocks.Put(ctx, evt)
+	if err != nil {
+		return nil, fmt.Errorf("putting merkle clock event: %w", err)
+	}
+
+	hbytes, err := head.Marshal(hd)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling head: %w", err)
+	}
+
+	err = bucket.data.Put(ctx, headKey, hbytes)
+	if err != nil {
+		return nil, fmt.Errorf("updating head: %w", err)
+	}
+
+	bucket.head = hd
+	return hd, nil
+}
+
+func (bucket *DsClockBucket) Root(ctx context.Context) (ipld.Link, error) {
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 
@@ -81,7 +93,7 @@ func (bucket *DsBucket) Root(ctx context.Context) (ipld.Link, error) {
 	return root, nil
 }
 
-func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) error {
+func (bucket *DsClockBucket) Put(ctx context.Context, key string, value ipld.Link) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -90,19 +102,16 @@ func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) er
 		return fmt.Errorf("putting %s: %w", key, err)
 	}
 
+	var additions []block.Block
 	if res.Event != nil {
-		err = bucket.blocks.Put(ctx, res.Event)
-		if err != nil {
-			return fmt.Errorf("putting merkle clock event: %w", err)
-		}
+		additions = append(additions, res.Event)
 	}
-
 	for _, b := range res.Additions {
-		log.Debugf("putting put diff addition: %s", b.Link())
-		err = bucket.blocks.Put(ctx, b)
-		if err != nil {
-			return fmt.Errorf("putting diff addition: %w", err)
-		}
+		additions = append(additions, b)
+	}
+	err = bucket.blocks.PutBatch(ctx, additions)
+	if err != nil {
+		return fmt.Errorf("putting diff addition: %w", err)
 	}
 
 	hbytes, err := head.Marshal(res.Head)
@@ -127,7 +136,7 @@ func (bucket *DsBucket) Put(ctx context.Context, key string, value ipld.Link) er
 	return nil
 }
 
-func (bucket *DsBucket) Get(ctx context.Context, key string) (ipld.Link, error) {
+func (bucket *DsClockBucket) Get(ctx context.Context, key string) (ipld.Link, error) {
 	bucket.mutex.RLock()
 	defer bucket.mutex.RUnlock()
 
@@ -138,7 +147,7 @@ func (bucket *DsBucket) Get(ctx context.Context, key string) (ipld.Link, error) 
 	return value, nil
 }
 
-func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[ipld.Link], error] {
+func (bucket *DsClockBucket) Entries(ctx context.Context, opts ...EntriesOption) iter.Seq2[Entry[ipld.Link], error] {
 	return func(yield func(Entry[ipld.Link], error) bool) {
 		bucket.mutex.RLock()
 		defer bucket.mutex.RUnlock()
@@ -155,7 +164,7 @@ func (bucket *DsBucket) Entries(ctx context.Context, opts ...EntriesOption) iter
 	}
 }
 
-func (bucket *DsBucket) Del(ctx context.Context, key string) error {
+func (bucket *DsClockBucket) Del(ctx context.Context, key string) error {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -164,19 +173,16 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 		return fmt.Errorf("deleting %s: %w", key, err)
 	}
 
+	var additions []block.Block
 	if res.Event != nil {
-		err = bucket.blocks.Put(ctx, res.Event)
-		if err != nil {
-			return fmt.Errorf("putting merkle clock event: %w", err)
-		}
+		additions = append(additions, res.Event)
 	}
-
 	for _, b := range res.Additions {
-		log.Debugf("putting delete diff addition: %s", b.Link())
-		err = bucket.blocks.Put(ctx, b)
-		if err != nil {
-			return fmt.Errorf("putting diff addition: %w", err)
-		}
+		additions = append(additions, b)
+	}
+	err = bucket.blocks.PutBatch(ctx, additions)
+	if err != nil {
+		return fmt.Errorf("putting diff addition: %w", err)
 	}
 
 	hbytes, err := head.Marshal(res.Head)
@@ -201,9 +207,8 @@ func (bucket *DsBucket) Del(ctx context.Context, key string) error {
 	return nil
 }
 
-func NewDsBucket(dstore datastore.Datastore) (*DsBucket, error) {
+func NewDsClockBucket(blocks block.Blockstore, dstore datastore.Datastore) (*DsClockBucket, error) {
 	var hd []ipld.Link
-	bs := NewDsBlockstore(dstore)
 	b, err := dstore.Get(context.Background(), headKey)
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
@@ -218,5 +223,5 @@ func NewDsBucket(dstore datastore.Datastore) (*DsBucket, error) {
 		}
 	}
 	log.Debugf("loading bucket with head: %s", hd)
-	return &DsBucket{head: hd, data: dstore, blocks: bs}, nil
+	return &DsClockBucket{head: hd, data: dstore, blocks: blocks}, nil
 }
