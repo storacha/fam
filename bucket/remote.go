@@ -108,6 +108,9 @@ func unbindAddrInfo(addr peer.AddrInfo) (ipld.Node, error) {
 		return nil, fmt.Errorf("assembling peer ID key: %w", err)
 	}
 	err = ma.AssembleValue().AssignBytes(idb)
+	if err != nil {
+		return nil, fmt.Errorf("assembling peer ID value: %w", err)
+	}
 
 	la, err := nb.BeginList(int64(len(addr.Addrs)))
 	if err != nil {

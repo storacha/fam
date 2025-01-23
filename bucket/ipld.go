@@ -71,7 +71,8 @@ func (bk *IpldNodeBucket[T]) Del(ctx context.Context, key string) error {
 	return bk.bucket.Del(ctx, key)
 }
 
-// NewIpldNodeBucket is a bucket that stores IPLD nodes.
+// NewIpldNodeBucket creates a bucket that stores IPLD nodes and handles binding
+// and unbinding them from Go types.
 func NewIpldNodeBucket[T any](bucket Bucket[ipld.Node], bind node.BinderFunc[T], unbind node.UnbinderFunc[T]) *IpldNodeBucket[T] {
 	return &IpldNodeBucket[T]{
 		bucket,
@@ -151,6 +152,7 @@ func NewIpldBytesBucket(bucket Bucket[[]byte], encode codec.Encoder, decode code
 	return &IpldBytesBucket{bucket, encode, decode}
 }
 
+// NewCborBucket creates an IPLD bucket whose values are dag-cbor encoded.
 func NewCborBucket(bucket Bucket[[]byte]) Bucket[ipld.Node] {
 	return NewIpldBytesBucket(bucket, dagcbor.Encode, dagcbor.Decode)
 }
