@@ -5,16 +5,29 @@ import (
 	"iter"
 
 	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/storacha/fam/block"
 )
 
 type NetworkClockBucket[T any] struct {
 	bucket  ClockBucket[T]
-	remotes Bucket[Remote]
+	remotes Bucket[peer.AddrInfo]
 }
 
-func (cb *NetworkClockBucket[T]) Remotes(ctx context.Context) (Bucket[Remote], error) {
+func (cb *NetworkClockBucket[T]) Remotes(ctx context.Context) (Bucket[peer.AddrInfo], error) {
 	return cb.remotes, nil
+}
+
+func (cb *NetworkClockBucket[T]) Remote(ctx context.Context, name string) (Remote, error) {
+	rems, err := cb.Remotes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	info, err := rems.Get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return &ClockRemote{cb.bucket, info}, nil
 }
 
 func (cb *NetworkClockBucket[T]) Head(ctx context.Context) ([]ipld.Link, error) {
@@ -46,6 +59,6 @@ func (cb *NetworkClockBucket[T]) Entries(ctx context.Context, opts ...EntriesOpt
 }
 
 // NewNetworkClockBucket creates a new [ClockBucket[T]] that is also a [Networker].
-func NewNetworkClockBucket[T any](bucket ClockBucket[T], remotes Bucket[Remote]) (*NetworkClockBucket[T], error) {
+func NewNetworkClockBucket[T any](bucket ClockBucket[T], remotes Bucket[peer.AddrInfo]) (*NetworkClockBucket[T], error) {
 	return &NetworkClockBucket[T]{bucket, remotes}, nil
 }

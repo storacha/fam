@@ -9,17 +9,27 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/bucket"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/did"
 	"github.com/storacha/go-ucanto/principal"
-	ed25519 "github.com/storacha/go-ucanto/principal/ed25519/signer"
+	"github.com/storacha/go-ucanto/principal/ed25519/signer"
+	"github.com/storacha/go-ucanto/principal/ed25519/verifier"
 )
 
 var log = logging.Logger("userdata")
 
-var DefaultKey = "default"
+var DefaultKeyName = "default"
+
+var (
+	DefaultRemoteName = "origin"
+	DefaultRemoteID   = "did:key:z6MkjonsDH66hn1zkLH1j7u3NBpsF8NpbpkMFAKtXGgumsyr"
+	DefaultRemoteAddr = "/dns/clock.web3.storage/https"
+)
 
 type UserDataStore struct {
 	dstore  ds.Datastore
@@ -30,7 +40,7 @@ type UserDataStore struct {
 
 // ID retrieves the named private key (signer) of the agent.
 func (userdata *UserDataStore) ID(ctx context.Context) (principal.Signer, error) {
-	return userdata.keys.Get(ctx, DefaultKey)
+	return userdata.keys.Get(ctx, DefaultKeyName)
 }
 
 func (userdata *UserDataStore) AddBucket(ctx context.Context, proof delegation.Delegation) (did.DID, error) {
@@ -134,7 +144,42 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 		block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks"))),
 		namespace.Wrap(userdata.dstore, pfx.ChildString("shards")),
 	)
-	nbk, err := bucket.NewNetworkClockBucket(bk, bucket.NewRemoteBucket(bk, rbk))
+	if err != nil {
+		return nil, err
+	}
+
+	rems := bucket.NewRemoteBucket(bk, rbk)
+	_, err = rems.Get(ctx, DefaultRemoteName)
+	if err != nil {
+		if errors.Is(err, bucket.ErrNotFound) {
+			pcl, err := verifier.Parse(DefaultRemoteID)
+			if err != nil {
+				return nil, err
+			}
+			pk, err := crypto.UnmarshalEd25519PublicKey(pcl.Raw())
+			if err != nil {
+				return nil, err
+			}
+			id, err := peer.IDFromPublicKey(pk)
+			if err != nil {
+				return nil, err
+			}
+			addr, err := multiaddr.NewMultiaddr(DefaultRemoteAddr)
+			if err != nil {
+				return nil, err
+			}
+			err = rems.Put(ctx, DefaultRemoteName, peer.AddrInfo{
+				ID:    id,
+				Addrs: []multiaddr.Multiaddr{addr},
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+	nbk, err := bucket.NewNetworkClockBucket(bk, rems)
 	if err != nil {
 		return nil, err
 	}
@@ -159,16 +204,16 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	}
 	keys := bucket.NewKeyBucket(keyshards)
 
-	id, err := keys.Get(ctx, DefaultKey)
+	id, err := keys.Get(ctx, DefaultKeyName)
 	if errors.Is(err, bucket.ErrNotFound) {
 		log.Warnln("default signing key not found, generating a new ed25519 key")
 
-		id, err = ed25519.Generate()
+		id, err = signer.Generate()
 		if err != nil {
 			return nil, err
 		}
 
-		err = keys.Put(ctx, DefaultKey, id)
+		err = keys.Put(ctx, DefaultKeyName, id)
 		if err != nil {
 			return nil, err
 		}

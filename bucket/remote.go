@@ -28,22 +28,14 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 	return errors.New("not implemented")
 }
 
-// NewRemoteBucket creates a new bucket that stores remotes.
-func NewRemoteBucket(clock Clock, bucket Bucket[ipld.Link]) Bucket[Remote] {
+// NewRemoteBucket creates a new bucket that stores remote address info.
+func NewRemoteBucket(clock Clock, bucket Bucket[ipld.Link]) Bucket[peer.AddrInfo] {
 	idbb := NewIdentityBytesBucket(bucket)
 	ipbb := NewCborBucket(idbb)
-	return NewIpldNodeBucket(ipbb, func(n ipld.Node) (Remote, error) {
-		addr, err := bindAddrInfo(n)
-		if err != nil {
-			return nil, err
-		}
-		return &ClockRemote{clock, addr}, nil
-	}, func(r Remote) (ipld.Node, error) {
-		addr, err := r.Address(context.Background())
-		if err != nil {
-			return nil, err
-		}
-		return unbindAddrInfo(addr)
+	return NewIpldNodeBucket(ipbb, func(n ipld.Node) (peer.AddrInfo, error) {
+		return bindAddrInfo(n)
+	}, func(info peer.AddrInfo) (ipld.Node, error) {
+		return unbindAddrInfo(info)
 	})
 }
 
@@ -111,8 +103,8 @@ func unbindAddrInfo(addr peer.AddrInfo) (ipld.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("assembling peer ID value: %w", err)
 	}
-
-	la, err := nb.BeginList(int64(len(addr.Addrs)))
+	nb2 := np.NewBuilder()
+	la, err := nb2.BeginList(int64(len(addr.Addrs)))
 	if err != nil {
 		return nil, fmt.Errorf("beginning value list: %w", err)
 	}
@@ -125,6 +117,14 @@ func unbindAddrInfo(addr peer.AddrInfo) (ipld.Node, error) {
 	err = la.Finish()
 	if err != nil {
 		return nil, fmt.Errorf("finishing addresses list: %w", err)
+	}
+	err = ma.AssembleKey().AssignString("addrs")
+	if err != nil {
+		return nil, fmt.Errorf("assembling addrs key: %w", err)
+	}
+	err = ma.AssembleValue().AssignNode(nb2.Build())
+	if err != nil {
+		return nil, fmt.Errorf("assembling addrs value: %w", err)
 	}
 	err = ma.Finish()
 	if err != nil {

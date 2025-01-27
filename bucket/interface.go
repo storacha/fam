@@ -50,7 +50,9 @@ type ClockBucket[T any] interface {
 // Networker allows for syncing state with remote servers.
 type Networker interface {
 	// Remotes retrieves the list of configured remotes.
-	Remotes(ctx context.Context) (Bucket[Remote], error)
+	Remotes(ctx context.Context) (Bucket[peer.AddrInfo], error)
+	// Remote returns a named instance of a remote.
+	Remote(ctx context.Context, name string) (Remote, error)
 }
 
 type Remote interface {
