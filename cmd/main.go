@@ -9,7 +9,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	fbucket "github.com/storacha/fam/bucket"
 	"github.com/storacha/fam/cmd/bucket"
-	"github.com/storacha/fam/cmd/bucket/remote"
+	"github.com/storacha/fam/cmd/remote"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/storacha/fam/store"
 	"github.com/storacha/go-ucanto/did"
