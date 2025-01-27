@@ -19,57 +19,59 @@ import (
 
 var log = logging.Logger("remote")
 
-var Command = &cli.Command{
-	Name:  "remote",
-	Usage: "Print configured remotes",
-	Action: func(cCtx *cli.Context) error {
-		datadir := util.EnsureDataDir(cCtx.String("datadir"))
-		userdata := util.UserDataStore(context.Background(), datadir)
-		curr := util.GetCurrent(datadir)
-		if curr == did.Undef {
-			return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
-		}
-		bk, err := userdata.Bucket(context.Background(), curr)
+func listRemotes(cCtx *cli.Context) error {
+	datadir := util.EnsureDataDir(cCtx.String("datadir"))
+	userdata := util.UserDataStore(context.Background(), datadir)
+	curr := util.GetCurrent(datadir)
+	if curr == did.Undef {
+		return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
+	}
+	bk, err := userdata.Bucket(context.Background(), curr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if nbk, ok := bk.(bucket.Networker); ok {
+		rems, err := nbk.Remotes(context.Background())
 		if err != nil {
 			log.Fatal(err)
 		}
-		if nbk, ok := bk.(bucket.Networker); ok {
-			rems, err := nbk.Remotes(context.Background())
+		count := 0
+		for entry, err := range rems.Entries(context.Background()) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			count := 0
-			for entry, err := range rems.Entries(context.Background()) {
-				if err != nil {
-					log.Fatal(err)
-				}
-				count++
-				fmt.Printf("%s\n", entry.Key)
-				pk, err := entry.Value.ID.ExtractPublicKey()
-				if err != nil {
-					log.Fatal(err)
-				}
-				raw, err := pk.Raw()
-				if err != nil {
-					log.Fatal(err)
-				}
-				key, err := multibase.Encode(multibase.Base58BTC, multiformat.TagWith(verifier.Code, raw))
-				if err != nil {
-					log.Fatal(err)
-				}
-				fmt.Printf("  ID:    did:key:%s\n", key)
-				fmt.Println("  Addrs:")
-				for _, a := range entry.Value.Addrs {
-					fmt.Printf("    %s\n", a)
-				}
-				fmt.Println()
+			count++
+			fmt.Printf("%s\n", entry.Key)
+			pk, err := entry.Value.ID.ExtractPublicKey()
+			if err != nil {
+				log.Fatal(err)
 			}
-			fmt.Printf("%d total\n", count)
-		} else {
-			return fmt.Errorf("bucket is not a networker")
+			raw, err := pk.Raw()
+			if err != nil {
+				log.Fatal(err)
+			}
+			key, err := multibase.Encode(multibase.Base58BTC, multiformat.TagWith(verifier.Code, raw))
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("  ID:    did:key:%s\n", key)
+			fmt.Println("  Addrs:")
+			for _, a := range entry.Value.Addrs {
+				fmt.Printf("    %s\n", a)
+			}
+			fmt.Println()
 		}
-		return nil
-	},
+		fmt.Printf("%d total\n", count)
+	} else {
+		return fmt.Errorf("bucket is not a networker")
+	}
+	return nil
+}
+
+var Command = &cli.Command{
+	Name:   "remote",
+	Usage:  "Manage remotes",
+	Action: listRemotes,
 	Subcommands: []*cli.Command{
 		{
 			Name:      "add",
@@ -125,6 +127,12 @@ var Command = &cli.Command{
 				}
 				return nil
 			},
+		},
+		{
+			Name:    "ls",
+			Usage:   "List configured remotes",
+			Aliases: []string{"list"},
+			Action:  listRemotes,
 		},
 		{
 			Name:      "rm",

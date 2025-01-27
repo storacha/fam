@@ -10,10 +10,12 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.1-0.20240917223228-6148356a4c2e
 	github.com/libp2p/go-libp2p v0.38.1
 	github.com/multiformats/go-multiaddr v0.14.0
+	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/storacha/go-pail v0.0.0-20250114110711-547618938b52
 	github.com/storacha/go-ucanto v0.2.0
+	github.com/urfave/cli/v2 v2.27.5
 	github.com/wailsapp/wails/v2 v2.9.2
 )
 
@@ -61,7 +63,6 @@ require (
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
-	github.com/multiformats/go-multibase v0.2.0 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.34.2 // indirect
@@ -75,8 +76,6 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.6 // indirect
-	github.com/urfave/cli/v2 v2.27.5 // indirect
-	github.com/urfave/cli/v3 v3.0.0-beta1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.16 // indirect

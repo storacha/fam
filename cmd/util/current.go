@@ -23,6 +23,9 @@ func GetCurrent(dataDir string) did.DID {
 		}
 		log.Fatalln("creating CLI data directory: %w", err)
 	}
+	if len(b) == 0 {
+		return did.Undef
+	}
 	id, err := did.Decode(b)
 	if err != nil {
 		log.Fatalln("decoding current bucket DID: %w", err)
@@ -35,7 +38,11 @@ func SetCurrent(dataDir string, id did.DID) {
 	if err != nil {
 		log.Fatalln("creating CLI data directory: %w", err)
 	}
-	err = os.WriteFile(path.Join(cliDataDir, "current"), id.Bytes(), 0644)
+	var bytes []byte
+	if id.Defined() {
+		bytes = id.Bytes()
+	}
+	err = os.WriteFile(path.Join(cliDataDir, "current"), bytes, 0644)
 	if err != nil {
 		log.Fatalln("creating CLI data directory: %w", err)
 	}

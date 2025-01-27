@@ -97,6 +97,7 @@ func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) err
 		return err
 	}
 	delete(userdata.buckets, id)
+	// TODO: clean data
 	return nil
 }
 

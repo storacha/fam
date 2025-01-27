@@ -2,12 +2,10 @@ package bucket
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"slices"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/storacha/fam/bucket"
-	"github.com/storacha/fam/cmd/bucket/remote"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/did"
@@ -18,33 +16,41 @@ import (
 
 var log = logging.Logger("bucket")
 
+func listBuckets(cCtx *cli.Context) error {
+	datadir := util.EnsureDataDir(cCtx.String("datadir"))
+	userdata := util.UserDataStore(context.Background(), datadir)
+	buckets, err := userdata.Buckets(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	curr := util.GetCurrent(datadir)
+	count := 0
+	var ids []string
+	for id := range buckets {
+		ids = append(ids, id.String())
+	}
+	slices.Sort(ids)
+
+	for _, id := range ids {
+		if curr.Defined() && id == curr.String() {
+			fmt.Printf("* %s\n", id)
+		} else {
+			fmt.Printf("  %s\n", id)
+		}
+		count++
+	}
+	fmt.Printf("%d total\n", count)
+	return nil
+}
+
 var Command = &cli.Command{
-	Name:  "bucket",
-	Usage: "Print buckets",
-	Action: func(cCtx *cli.Context) error {
-		datadir := util.EnsureDataDir(cCtx.String("datadir"))
-		userdata := util.UserDataStore(context.Background(), datadir)
-		buckets, err := userdata.Buckets(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		curr := util.GetCurrent(datadir)
-		count := 0
-		for id := range buckets {
-			if id == curr {
-				fmt.Printf("* %s\n", id)
-			} else {
-				fmt.Printf("  %s\n", id)
-			}
-			count++
-		}
-		fmt.Printf("%d total\n", count)
-		return nil
-	},
+	Name:   "bucket",
+	Usage:  "Manage buckets",
+	Action: listBuckets,
 	Subcommands: []*cli.Command{
 		{
 			Name:      "import",
-			Usage:     "Import a bucket",
+			Usage:     "Import a shared bucket",
 			Args:      true,
 			ArgsUsage: "<grant>",
 			Action: func(cCtx *cli.Context) error {
@@ -82,86 +88,86 @@ var Command = &cli.Command{
 			},
 		},
 		{
-			Name:      "pull",
-			Usage:     "Pull changes from a remote",
+			Name:    "ls",
+			Usage:   "List buckets",
+			Aliases: []string{"list"},
+			Action:  listBuckets,
+		},
+		{
+			Name:      "rm",
+			Usage:     "Remove a bucket",
+			Aliases:   []string{"remove"},
 			Args:      true,
-			ArgsUsage: "<remote>",
+			ArgsUsage: "<id>",
 			Action: func(cCtx *cli.Context) error {
 				datadir := util.EnsureDataDir(cCtx.String("datadir"))
 				userdata := util.UserDataStore(context.Background(), datadir)
-				curr := util.GetCurrent(datadir)
-				if curr == did.Undef {
-					return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
+				id, err := did.Parse(cCtx.Args().Get(0))
+				if err != nil {
+					return fmt.Errorf("parsing bucket DID: %w", err)
 				}
-				bk, err := userdata.Bucket(context.Background(), curr)
+				err = userdata.RemoveBucket(context.Background(), id)
 				if err != nil {
 					log.Fatal(err)
 				}
-				if nbk, ok := bk.(bucket.Networker); ok {
-					name := cCtx.Args().Get(0)
-					remote, err := nbk.Remote(context.Background(), name)
-					if err != nil {
-						if errors.Is(err, bucket.ErrNotFound) {
-							return fmt.Errorf("remote not found: %s", name)
-						}
-						log.Fatal(err)
-					}
-					err = remote.Pull(context.Background())
-					if err != nil {
-						log.Fatal(err)
-					}
-					root, err := bk.Root(context.Background())
-					if err != nil {
-						log.Fatal(err)
-					}
-					fmt.Println(root.String())
-				} else {
-					return fmt.Errorf("bucket is not a networker")
+				curr := util.GetCurrent(datadir)
+				if curr != did.Undef && curr == id {
+					util.SetCurrent(datadir, did.Undef)
 				}
 				return nil
 			},
 		},
 		{
-			Name:      "push",
-			Usage:     "Push local changes from a remote",
+			Name:      "share",
+			Usage:     "Share a bucket",
 			Args:      true,
-			ArgsUsage: "<remote>",
+			ArgsUsage: "<recipient>",
 			Action: func(cCtx *cli.Context) error {
 				datadir := util.EnsureDataDir(cCtx.String("datadir"))
 				userdata := util.UserDataStore(context.Background(), datadir)
+				buckets, err := userdata.Buckets(context.Background())
+				if err != nil {
+					log.Fatal(err)
+				}
+				if len(buckets) == 0 {
+					return fmt.Errorf("no buckets, use `fam bucket import`")
+				}
+				audience, err := did.Parse(cCtx.Args().Get(0))
+				if err != nil {
+					return fmt.Errorf("parsing recipient DID: \"%s\"", cCtx.Args().Get(0))
+				}
 				curr := util.GetCurrent(datadir)
 				if curr == did.Undef {
 					return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
 				}
-				bk, err := userdata.Bucket(context.Background(), curr)
+				proof, ok := buckets[curr]
+				if !ok {
+					return fmt.Errorf("bucket not found: %s", curr)
+				}
+				issuer, err := userdata.ID(context.Background())
 				if err != nil {
 					log.Fatal(err)
 				}
-				if nbk, ok := bk.(bucket.Networker); ok {
-					name := cCtx.Args().Get(0)
-					remote, err := nbk.Remote(context.Background(), name)
-					if err != nil {
-						if errors.Is(err, bucket.ErrNotFound) {
-							return fmt.Errorf("remote not found: %s", name)
-						}
-						log.Fatal(err)
-					}
-					err = remote.Push(context.Background())
-					if err != nil {
-						log.Fatal(err)
-					}
-					root, err := bk.Root(context.Background())
-					if err != nil {
-						log.Fatal(err)
-					}
-					fmt.Println(root.String())
-				} else {
-					return fmt.Errorf("bucket is not a networker")
+				d, err := delegation.Delegate(
+					issuer,
+					audience,
+					[]ucan.Capability[ucan.NoCaveats]{
+						ucan.NewCapability("space/blob/*", curr.String(), ucan.NoCaveats{}),
+						ucan.NewCapability("clock/*", curr.String(), ucan.NoCaveats{}),
+					},
+					delegation.WithProof(delegation.FromDelegation(proof)),
+				)
+				if err != nil {
+					log.Fatal(err)
 				}
+				s, err := delegation.Format(d)
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("%s\n", s)
 				return nil
 			},
 		},
-		remote.Command,
 		{
 			Name:      "use",
 			Usage:     "Use a bucket",
