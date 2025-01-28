@@ -1,19 +1,17 @@
-# README
+# FAM
 
-## About
+Family sized chicken bucket. An immutable-but-mutable Merkle-CRDT based bucket abstraction, authorized by UCAN and stored by the Storacha Network.
 
-This is the official Wails React-TS template.
+Imagine that, packaged up as a sweet installable desktop app and CLI.
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## Install
 
-## Live Development
+[Download and install the latest release](https://github.com/storacha/fam/releases).
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Contributing
 
-## Building
+Feel free to join in. All welcome. [Open an issue](https://github.com/storacha/fam/issues)!
 
-To build a redistributable, production mode package, use `wails build`.
+## License
+
+Dual-licensed under [MIT or Apache 2.0](https://github.com/storacha/fam/blob/main/LICENSE.md)
