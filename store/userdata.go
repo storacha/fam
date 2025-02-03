@@ -9,7 +9,9 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/storacha/fam/block"
@@ -36,6 +38,7 @@ type UserDataStore struct {
 	keys    bucket.Bucket[principal.Signer]
 	grants  bucket.Bucket[delegation.Delegation]
 	buckets map[did.DID]bucket.Bucket[ipld.Link]
+	host    host.Host
 }
 
 // ID retrieves the named private key (signer) of the agent.
@@ -118,20 +121,29 @@ func (userdata *UserDataStore) Buckets(ctx context.Context) (map[did.DID]delegat
 }
 
 // Bucket retrieves a specific user bucket by it's DID.
-func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.Bucket[ipld.Link], error) {
-	if bucket, ok := userdata.buckets[id]; ok {
+func (userdata *UserDataStore) Bucket(ctx context.Context, bucketID did.DID) (bucket.Bucket[ipld.Link], error) {
+	if bucket, ok := userdata.buckets[bucketID]; ok {
 		return bucket, nil
 	}
+
+	agentID, err := userdata.ID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// ensure it exists
-	if _, err := userdata.grants.Get(ctx, id.String()); err != nil {
+	grant, err := userdata.grants.Get(ctx, bucketID.String())
+	if err != nil {
 		return nil, err
 	}
 	// TODO: verify delegation is still valid
 
+	proof := delegation.FromDelegation(grant)
+
 	// TODO: storacha blockstore?
 	// TODO: tiered blockstore local, remote
 
-	pfx := ds.NewKey(fmt.Sprintf("bucket/%s", id.String()))
+	pfx := ds.NewKey(fmt.Sprintf("bucket/%s", bucketID.String()))
 	bk, err := bucket.NewDsClockBucket(
 		block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks"))),
 		namespace.Wrap(userdata.dstore, pfx.ChildString("shards")),
@@ -180,20 +192,43 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, id did.DID) (bucket.B
 			return nil, err
 		}
 	}
-	nbk, err := bucket.NewNetworkClockBucket(bk, rems)
+	nbk, err := bucket.NewNetworkClockBucket(agentID, bucketID, proof, bk, userdata.host, rems)
 	if err != nil {
 		return nil, err
 	}
 
-	userdata.buckets[id] = nbk
+	userdata.buckets[bucketID] = nbk
 	return nbk, nil
 }
 
 func (userdata *UserDataStore) Close() error {
-	return userdata.dstore.Close()
+	herr := userdata.host.Close()
+	derr := userdata.dstore.Close()
+	return errors.Join(herr, derr)
 }
 
-func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore, error) {
+type userDataConfig struct {
+	getHost func(pk crypto.PrivKey) (host.Host, error)
+}
+
+type Option func(c *userDataConfig) error
+
+func WithHostFactory(f func(pk crypto.PrivKey) (host.Host, error)) Option {
+	return func(c *userDataConfig) error {
+		c.getHost = f
+		return nil
+	}
+}
+
+func NewUserDataStore(ctx context.Context, dstore ds.Datastore, opts ...Option) (*UserDataStore, error) {
+	cfg := userDataConfig{}
+	for _, o := range opts {
+		err := o(&cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	log.Debugln("creating key bucket...")
 
 	keyshards, err := bucket.NewDsClockBucket(
@@ -231,5 +266,21 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore) (*UserDataStore,
 	}
 	grants := bucket.NewDelegationBucket(grantshards)
 
-	return &UserDataStore{dstore, keys, grants, map[did.DID]bucket.Bucket[ipld.Link]{}}, nil
+	pk, err := crypto.UnmarshalEd25519PrivateKey(id.Raw())
+	if err != nil {
+		return nil, err
+	}
+	if cfg.getHost == nil {
+		cfg.getHost = getDefaultHost
+	}
+	host, err := cfg.getHost(pk)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserDataStore{dstore, keys, grants, map[did.DID]bucket.Bucket[ipld.Link]{}, host}, nil
+}
+
+func getDefaultHost(pk crypto.PrivKey) (host.Host, error) {
+	return libp2p.New(libp2p.Identity(pk))
 }

@@ -5,13 +5,21 @@ import (
 	"iter"
 
 	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/storacha/fam/block"
+	"github.com/storacha/go-ucanto/core/delegation"
+	"github.com/storacha/go-ucanto/principal"
+	"github.com/storacha/go-ucanto/ucan"
 )
 
 type NetworkClockBucket[T any] struct {
-	bucket  ClockBucket[T]
-	remotes Bucket[peer.AddrInfo]
+	agentID  principal.Signer
+	bucketID ucan.Principal
+	proof    delegation.Proof
+	bucket   ClockBucket[T]
+	remotes  Bucket[peer.AddrInfo]
+	host     host.Host
 }
 
 func (cb *NetworkClockBucket[T]) Remotes(ctx context.Context) (Bucket[peer.AddrInfo], error) {
@@ -19,15 +27,15 @@ func (cb *NetworkClockBucket[T]) Remotes(ctx context.Context) (Bucket[peer.AddrI
 }
 
 func (cb *NetworkClockBucket[T]) Remote(ctx context.Context, name string) (Remote, error) {
-	rems, err := cb.Remotes(ctx)
+	remotes, err := cb.Remotes(ctx)
 	if err != nil {
 		return nil, err
 	}
-	info, err := rems.Get(ctx, name)
+	remoteAddr, err := remotes.Get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	return &ClockRemote{cb.bucket, info}, nil
+	return &ClockRemote{cb.agentID, cb.bucketID, cb.proof, cb.bucket, remoteAddr, cb.host}, nil
 }
 
 func (cb *NetworkClockBucket[T]) Head(ctx context.Context) ([]ipld.Link, error) {
@@ -59,6 +67,6 @@ func (cb *NetworkClockBucket[T]) Entries(ctx context.Context, opts ...EntriesOpt
 }
 
 // NewNetworkClockBucket creates a new [ClockBucket[T]] that is also a [Networker].
-func NewNetworkClockBucket[T any](bucket ClockBucket[T], remotes Bucket[peer.AddrInfo]) (*NetworkClockBucket[T], error) {
-	return &NetworkClockBucket[T]{bucket, remotes}, nil
+func NewNetworkClockBucket[T any](agentID principal.Signer, bucketID ucan.Principal, proof delegation.Proof, bucket ClockBucket[T], host host.Host, remotes Bucket[peer.AddrInfo]) (*NetworkClockBucket[T], error) {
+	return &NetworkClockBucket[T]{agentID, bucketID, proof, bucket, remotes, host}, nil
 }

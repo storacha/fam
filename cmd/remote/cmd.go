@@ -8,12 +8,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multibase"
 	"github.com/storacha/fam/bucket"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/storacha/go-ucanto/did"
 	"github.com/storacha/go-ucanto/principal/ed25519/verifier"
-	"github.com/storacha/go-ucanto/principal/multiformat"
 	"github.com/urfave/cli/v2"
 )
 
@@ -50,11 +48,11 @@ func listRemotes(cCtx *cli.Context) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			key, err := multibase.Encode(multibase.Base58BTC, multiformat.TagWith(verifier.Code, raw))
+			v, err := verifier.FromRaw(raw)
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("  ID:    did:key:%s\n", key)
+			fmt.Printf("  ID:    %s\n", v.DID())
 			fmt.Println("  Addrs:")
 			for _, a := range entry.Value.Addrs {
 				fmt.Printf("    %s\n", a)

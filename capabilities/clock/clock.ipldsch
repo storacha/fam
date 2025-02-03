@@ -1,0 +1,11 @@
+type HeadCaveats struct {}
+
+type AdvanceCaveats struct {
+	event Link
+}
+
+type Ok struct {
+	head [Link]
+}
+
+type Err any
