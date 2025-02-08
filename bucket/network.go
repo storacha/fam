@@ -7,7 +7,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/storacha/fam/block"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/principal"
 	"github.com/storacha/go-ucanto/ucan"
@@ -42,7 +41,7 @@ func (cb *NetworkClockBucket[T]) Head(ctx context.Context) ([]ipld.Link, error) 
 	return cb.bucket.Head(ctx)
 }
 
-func (cb *NetworkClockBucket[T]) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
+func (cb *NetworkClockBucket[T]) Advance(ctx context.Context, evt ipld.Link) ([]ipld.Link, error) {
 	return cb.bucket.Advance(ctx, evt)
 }
 

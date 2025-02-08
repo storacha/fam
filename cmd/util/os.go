@@ -34,12 +34,12 @@ func EnsureDataDir(dataDir string) string {
 	return dataDir
 }
 
-func UserDataStore(ctx context.Context, dataDir string) *store.UserDataStore {
+func UserDataStore(ctx context.Context, dataDir string, opts ...store.Option) *store.UserDataStore {
 	dstore, err := leveldb.NewDatastore(dataDir, nil)
 	if err != nil {
 		log.Fatalln("creating datastore: %w", err)
 	}
-	userdata, err := store.NewUserDataStore(ctx, dstore)
+	userdata, err := store.NewUserDataStore(ctx, dstore, opts...)
 	if err != nil {
 		log.Fatalln(err)
 	}

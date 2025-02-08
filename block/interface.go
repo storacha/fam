@@ -16,9 +16,13 @@ type Fetcher = block.Fetcher
 var NewMapBlockstore = block.NewMapBlockstore
 var NewTieredBlockFetcher = block.NewTieredBlockFetcher
 
+type Putter interface {
+	Put(ctx context.Context, block Block) error
+}
+
 type Blockstore interface {
 	block.Fetcher
-	Put(ctx context.Context, block block.Block) error
-	PutBatch(ctx context.Context, blocks []block.Block) error
+	Putter
+	PutBatch(ctx context.Context, blocks []Block) error
 	Del(ctx context.Context, link ipld.Link) error
 }

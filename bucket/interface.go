@@ -38,7 +38,19 @@ type Bucket[T any] interface {
 // Clock is a merkle clock.
 type Clock interface {
 	Head(ctx context.Context) ([]ipld.Link, error)
-	Advance(ctx context.Context, event block.Block) ([]ipld.Link, error)
+	Advance(ctx context.Context, event ipld.Link, opts ...AdvanceOption) ([]ipld.Link, error)
+}
+
+type AdvanceOption func(*advanceOptions)
+
+type advanceOptions struct {
+	fetcher block.Fetcher
+}
+
+func WithBlockFetcher(f block.Fetcher) AdvanceOption {
+	return func(opts *advanceOptions) {
+		opts.fetcher = f
+	}
 }
 
 // ClockBucket is a bucket backed by a merkle clock.

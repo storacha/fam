@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/alanshaw/ucanp2p"
 	"github.com/ipld/go-ipld-prime"
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/storacha/fam/capabilities/clock"
+	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/core/invocation"
@@ -157,8 +159,12 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 		return fmt.Errorf("invocation failure: %+v", f)
 	}
 
+	client := http.Client{Transport: trustlessgateway.NewP2PTransport(r.host)}
+	url := fmt.Sprintf("libp2p://%s", r.remoteAddr.ID)
+	fetcher := trustlessgateway.NewClient(url, &client)
+
 	for _, event := range o.Head {
-		_, err := r.clock.Advance(ctx, event)
+		_, err := r.clock.Advance(ctx, event, WithBlockFetcher(fetcher))
 		if err != nil {
 			return fmt.Errorf("advancing clock: %w", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
@@ -16,6 +17,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/bucket"
+	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/did"
 	"github.com/storacha/go-ucanto/principal"
@@ -34,11 +36,12 @@ var (
 )
 
 type UserDataStore struct {
-	dstore  ds.Datastore
-	keys    bucket.Bucket[principal.Signer]
-	grants  bucket.Bucket[delegation.Delegation]
-	buckets map[did.DID]bucket.Bucket[ipld.Link]
-	host    host.Host
+	dstore      ds.Datastore
+	keys        bucket.Bucket[principal.Signer]
+	grants      bucket.Bucket[delegation.Delegation]
+	blockstores map[did.DID]block.Blockstore
+	buckets     map[did.DID]bucket.Bucket[ipld.Link]
+	host        host.Host
 }
 
 // ID retrieves the named private key (signer) of the agent.
@@ -120,6 +123,17 @@ func (userdata *UserDataStore) Buckets(ctx context.Context) (map[did.DID]delegat
 	return buckets, nil
 }
 
+func (userdata *UserDataStore) blockstore(bucketID did.DID) block.Blockstore {
+	bs, ok := userdata.blockstores[bucketID]
+	if ok {
+		return bs
+	}
+	pfx := ds.NewKey(fmt.Sprintf("bucket/%s", bucketID.String()))
+	bs = block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks")))
+	userdata.blockstores[bucketID] = bs
+	return bs
+}
+
 // Bucket retrieves a specific user bucket by it's DID.
 func (userdata *UserDataStore) Bucket(ctx context.Context, bucketID did.DID) (bucket.Bucket[ipld.Link], error) {
 	if bucket, ok := userdata.buckets[bucketID]; ok {
@@ -145,7 +159,7 @@ func (userdata *UserDataStore) Bucket(ctx context.Context, bucketID did.DID) (bu
 
 	pfx := ds.NewKey(fmt.Sprintf("bucket/%s", bucketID.String()))
 	bk, err := bucket.NewDsClockBucket(
-		block.NewDsBlockstore(namespace.Wrap(userdata.dstore, pfx.ChildString("blocks"))),
+		userdata.blockstore(bucketID),
 		namespace.Wrap(userdata.dstore, pfx.ChildString("shards")),
 	)
 	if err != nil {
@@ -208,12 +222,12 @@ func (userdata *UserDataStore) Close() error {
 }
 
 type userDataConfig struct {
-	getHost func(pk crypto.PrivKey) (host.Host, error)
+	getHost func(crypto.PrivKey) (host.Host, error)
 }
 
 type Option func(c *userDataConfig) error
 
-func WithHostFactory(f func(pk crypto.PrivKey) (host.Host, error)) Option {
+func WithHostFactory(f func(crypto.PrivKey) (host.Host, error)) Option {
 	return func(c *userDataConfig) error {
 		c.getHost = f
 		return nil
@@ -230,7 +244,6 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore, opts ...Option) 
 	}
 
 	log.Debugln("creating key bucket...")
-
 	keyshards, err := bucket.NewDsClockBucket(
 		block.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("keys/blocks/"))),
 		namespace.Wrap(dstore, ds.NewKey("keys/shards/")),
@@ -273,14 +286,56 @@ func NewUserDataStore(ctx context.Context, dstore ds.Datastore, opts ...Option) 
 	if cfg.getHost == nil {
 		cfg.getHost = getDefaultHost
 	}
+
+	blockstores := map[did.DID]block.Blockstore{}
+	buckets := map[did.DID]bucket.Bucket[ipld.Link]{}
+
 	host, err := cfg.getHost(pk)
 	if err != nil {
 		return nil, err
 	}
+	listener, err := trustlessgateway.NewP2PListener(host)
+	if err != nil {
+		return nil, err
+	}
+	mux, err := trustlessgateway.NewServer(&bucketBlockFetcher{blockstores})
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		err := http.Serve(listener, mux)
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Error(err)
+		}
+	}()
 
-	return &UserDataStore{dstore, keys, grants, map[did.DID]bucket.Bucket[ipld.Link]{}, host}, nil
+	return &UserDataStore{
+		dstore:      dstore,
+		keys:        keys,
+		grants:      grants,
+		blockstores: blockstores,
+		buckets:     buckets,
+		host:        host,
+	}, nil
 }
 
 func getDefaultHost(pk crypto.PrivKey) (host.Host, error) {
 	return libp2p.New(libp2p.Identity(pk))
+}
+
+type bucketBlockFetcher struct {
+	blockstores map[did.DID]block.Blockstore
+}
+
+func (bf *bucketBlockFetcher) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
+	for _, bs := range bf.blockstores {
+		b, err := bs.Get(ctx, link)
+		if err == nil {
+			return b, nil
+		}
+		if !errors.Is(err, block.ErrNotFound) {
+			log.Debugf("getting block: %w", err)
+		}
+	}
+	return nil, block.ErrNotFound
 }

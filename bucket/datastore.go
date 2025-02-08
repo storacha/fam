@@ -36,28 +36,39 @@ func (bucket *DsClockBucket) Head(ctx context.Context) ([]ipld.Link, error) {
 	return bucket.head, nil
 }
 
-func (bucket *DsClockBucket) Advance(ctx context.Context, evt block.Block) ([]ipld.Link, error) {
+func (bucket *DsClockBucket) Advance(ctx context.Context, evt ipld.Link, opts ...AdvanceOption) ([]ipld.Link, error) {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
 	for _, l := range bucket.head {
-		if l == evt.Link() {
+		if l == evt {
 			return bucket.head, nil
 		}
 	}
 
-	mblocks := block.NewMapBlockstore()
-	_ = mblocks.Put(ctx, evt)
+	var o advanceOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 
-	hd, err := clock.Advance(ctx, block.NewTieredBlockFetcher(mblocks, bucket.blocks), node.BinderFunc[operation.Operation](operation.Bind), bucket.head, evt.Link())
+	mblocks := block.NewMapBlockstore()
+	var fetcher block.Fetcher = bucket.blocks
+	if o.fetcher != nil {
+		fetcher = block.NewTieredBlockFetcher(o.fetcher, bucket.blocks)
+	}
+	fetcher = block.NewCachingFetcher(fetcher, mblocks)
+
+	hd, err := clock.Advance(ctx, fetcher, node.BinderFunc[operation.Operation](operation.Bind), bucket.head, evt)
 	if err != nil {
 		return nil, fmt.Errorf("advancing merkle clock: %w", err)
 	}
 
-	// permanently write the new event block
-	err = bucket.blocks.Put(ctx, evt)
-	if err != nil {
-		return nil, fmt.Errorf("putting merkle clock event: %w", err)
+	// permanently write blocks fetched during advance
+	for b := range mblocks.Entries(ctx) {
+		err = bucket.blocks.Put(ctx, b)
+		if err != nil {
+			return nil, fmt.Errorf("putting merkle clock event: %w", err)
+		}
 	}
 
 	hbytes, err := head.Marshal(hd)
