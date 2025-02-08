@@ -46,8 +46,6 @@ dmitri.shuralyov.com/state v0.0.0-20180228185332-28bcc343414c/go.mod h1:0PRwlb0D
 git.apache.org/thrift.git v0.0.0-20180902110319-2566ecd5d999/go.mod h1:fPE2ZNJGynbRyZ4dJvy6G277gSllfV2HJqblrnkyeyg=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/alanshaw/ucanp2p v0.0.0-20250130113641-35bafdb34ea7 h1:owjCSOVCGs0qUf55dDXP2TeK7D77EY/LDlq0tMfjtic=
-github.com/alanshaw/ucanp2p v0.0.0-20250130113641-35bafdb34ea7/go.mod h1:XASQvlI9ygEdethHU0C31Tr/jNfzXEqng5bLahVactg=
 github.com/alanshaw/ucanp2p v0.0.0-20250208192140-997280031600 h1:xVAVbiReqheVUNPBeCYETf2+5RNPzsRSigHGr59yJN8=
 github.com/alanshaw/ucanp2p v0.0.0-20250208192140-997280031600/go.mod h1:XASQvlI9ygEdethHU0C31Tr/jNfzXEqng5bLahVactg=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239/go.mod h1:2FmKhYUyUczH0OGQWaF5ceTx0UBShxjsH6f8oGKYe2c=

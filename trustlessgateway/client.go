@@ -23,7 +23,7 @@ type TrustlessGatewayClient struct {
 }
 
 func (tf *TrustlessGatewayClient) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
-	reqDigest, err := ToDigest(link)
+	reqDigest, err := toDigest(link)
 	if err != nil {
 		return nil, fmt.Errorf("extracting digest from link: %w", err)
 	}
@@ -73,7 +73,7 @@ func NewClient(endpoint string, client *http.Client) *TrustlessGatewayClient {
 	return &TrustlessGatewayClient{endpoint, client}
 }
 
-func ToDigest(link ipld.Link) (multihash.Multihash, error) {
+func toDigest(link ipld.Link) (multihash.Multihash, error) {
 	c, err := cid.Parse(link.String())
 	if err != nil {
 		return nil, fmt.Errorf("decoding CID: %w", err)
