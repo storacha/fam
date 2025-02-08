@@ -3,7 +3,7 @@ module github.com/storacha/fam
 go 1.23.3
 
 require (
-	github.com/alanshaw/ucanp2p v0.0.0-20250130113641-35bafdb34ea7
+	github.com/alanshaw/ucanp2p v0.0.0-20250208192140-997280031600
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-ds-leveldb v0.5.0
