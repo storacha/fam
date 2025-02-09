@@ -7,7 +7,7 @@ import { base64 } from 'multiformats/bases/base64'
 import { identity } from 'multiformats/hashes/identity'
 import { create as createLink } from 'multiformats/link'
 import { useNavigate } from 'react-router'
-import { ArrowDownOnSquareIcon } from '@heroicons/react/24/outline'
+import { ArrowDownOnSquareIcon, Square2StackIcon } from '@heroicons/react/24/outline'
 import * as API from '../api'
 import { DID } from '@ucanto/interface'
 
@@ -63,7 +63,12 @@ export const Import = () => {
   return (
     <form className='flex flex-col justify-center items-center h-full px-6 lg:px-24' onSubmit={handleSubmit}>
       <p className='font-epilogue text-center mb-2'>Your agent DID:</p>
-      <p className='font-mono text-center mb-10 rounded-full px-4 py-2 bg-hot-yellow-light'>{agentID}</p>
+      <p className='font-mono text-center rounded-full px-4 py-2 bg-hot-yellow-light'>{agentID}</p>
+      <p className='font-epilogue text-xs my-2'>(share this with someone who can grant access)</p>
+      <button type='button' className='font-epilogue text-hot-red hover:text-black text-sm text-center cursor-pointer mb-10'>
+        <Square2StackIcon  className='size-5 inline-block mr-1 align-text-bottom' />
+        Copy
+      </button>
       <p className='font-epilogue text-center mb-2'>Paste your bucket delegation below:</p>
       <textarea value={proof} onChange={e => setProof(e.currentTarget.value)} className='font-mono p-2 border rounded-xl mb-3 w-full h-96 sm:h-80 md:h-60 lg:h-52'></textarea>
       <button type='submit' className='font-epilogue text-hot-red hover:text-black text-sm text-center cursor-pointer'>

@@ -102,14 +102,14 @@ export const Objects = () => {
             )}
           </div>
           <div className='flex-none py-4'>
-            <div className='font-mono text-xs text-center text-gray-600'>
+            <div className='font-mono text-xs text-center text-gray-600' title='Bucket DID'>
               {params.did}
               <button type='button' className='hover:text-black px-1' title='Copy Bucket DID'>
                 <Square2StackIcon className='inline-block size-4' />
               </button>
             </div>
             {root ? (
-              <div className='font-mono text-xs text-center text-gray-400'>
+              <div className='font-mono text-xs text-center text-gray-400' title='Bucket root CID'>
                 {root.toString()}
                 <button type='button' className='hover:text-black px-1' title='Copy Bucket root CID'>
                   <Square2StackIcon className='inline-block size-4' />

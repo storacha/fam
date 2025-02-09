@@ -16,3 +16,5 @@ export function Put(arg1:string):Promise<string>;
 export function RemoveBucket(arg1:string):Promise<void>;
 
 export function Root(arg1:string):Promise<string>;
+
+export function ShareBucket(arg1:string):Promise<string>;

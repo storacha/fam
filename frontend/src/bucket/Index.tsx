@@ -101,8 +101,8 @@ const BucketList = ({ buckets, roots, selections, onSelectionsChange }: BucketLi
                     <label htmlFor='checkbox-table-search-1' className='sr-only'>checkbox</label>
                   </div>
                 </td>
-                <th scope='row' className='px-6 py-4'>
-                  <NavLink to={`/bucket/${id}`} className='max-w-lg font-medium font-mono text-xs text-gray-900 group hover:text-hot-red block' title={id}>
+                <th scope='row'>
+                  <NavLink to={`/bucket/${id}`} className='max-w-lg font-medium font-mono text-xs text-gray-900 group hover:text-hot-red block px-6 py-4' title={id}>
                     {id}<br/>
                     <span className='text-gray-500 group-hover:text-hot-red'>{roots.get(id)?.toString() ?? 'Unknown'}</span>
                   </NavLink>

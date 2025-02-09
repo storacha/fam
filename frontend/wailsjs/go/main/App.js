@@ -33,3 +33,7 @@ export function RemoveBucket(arg1) {
 export function Root(arg1) {
   return window['go']['main']['App']['Root'](arg1);
 }
+
+export function ShareBucket(arg1) {
+  return window['go']['main']['App']['ShareBucket'](arg1);
+}

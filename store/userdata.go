@@ -23,6 +23,7 @@ import (
 	"github.com/storacha/go-ucanto/principal"
 	"github.com/storacha/go-ucanto/principal/ed25519/signer"
 	"github.com/storacha/go-ucanto/principal/ed25519/verifier"
+	"github.com/storacha/go-ucanto/ucan"
 )
 
 var log = logging.Logger("userdata")
@@ -105,6 +106,27 @@ func (userdata *UserDataStore) RemoveBucket(ctx context.Context, id did.DID) err
 	delete(userdata.buckets, id)
 	// TODO: clean data
 	return nil
+}
+
+func (userdata *UserDataStore) ShareBucket(ctx context.Context, bucket did.DID, audience did.DID) (delegation.Delegation, error) {
+	proof, err := userdata.grants.Get(ctx, bucket.String())
+	if err != nil {
+		return nil, err
+	}
+	issuer, err := userdata.ID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return delegation.Delegate(
+		issuer,
+		audience,
+		[]ucan.Capability[ucan.NoCaveats]{
+			ucan.NewCapability("clock/*", bucket.String(), ucan.NoCaveats{}),
+			ucan.NewCapability("space/blob/*", bucket.String(), ucan.NoCaveats{}),
+		},
+		delegation.WithNoExpiration(),
+		delegation.WithProof(delegation.FromDelegation(proof)),
+	)
 }
 
 // Buckets retrieves the list of buckets (and their corresponding delegations).

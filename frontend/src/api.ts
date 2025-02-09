@@ -6,7 +6,7 @@ import { ok, error } from '@ucanto/core'
 import { ed25519 } from '@ucanto/principal'
 import { extract as extractDelegation } from '@ucanto/core/delegation'
 import { parse as parseJSON, stringify as encodeJSON } from '@ipld/dag-json'
-import { ID, Buckets, AddBucket, Root, Entries, Put } from '../wailsjs/go/main/App'
+import { ID, Buckets, AddBucket, Root, Entries, Put, ShareBucket } from '../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime'
 
 export interface InvocationFailure extends Error {
@@ -70,7 +70,7 @@ export const buckets = async (): Promise<Result<Map<DID, Delegation>, Invocation
     return error(new InvocationError('failed to invoke API', { cause: err }))
   }
 
-  let data: { string: Uint8Array }
+  let data: { [did: string]: Uint8Array }
   try {
     data = parseJSON(res)
   } catch (err) {
@@ -202,6 +202,36 @@ export const put = async (id: DID, key: string, value: UnknownLink): Promise<Res
   } catch (err) {
     return error(new DecodeError('failed to decode bucket root CID', { cause: err }))
   }
+}
+
+export const shareBucket = async (bucket: DID, audience: DID): Promise<Result<Delegation, EncodeFailure|InvocationFailure|DecodeError>> => {
+  let input: string
+  try {
+    input = encodeJSON({ bucket: principalFrom(bucket), audience: principalFrom(audience) })
+  } catch (err) {
+    return error(new EncodeError('failed to stringify API parameters', { cause: err }))
+  }
+
+  let res: string
+  try {
+    res = await ShareBucket(input)
+  } catch (err) {
+    return error(new InvocationError('failed to invoke API', { cause: err }))
+  }
+
+  let data: Uint8Array
+  try {
+    data = parseJSON(res)
+  } catch (err) {
+    return error(new DecodeError('failed to parse API response', { cause: err }))
+  }
+
+  const extractRes = await extractDelegation(data)
+  if (extractRes.error) {
+    return error(new DecodeError('failed to extract delegation', { cause: extractRes.error }))
+  }
+
+  return ok(extractRes.ok)
 }
 
 export const openExternalURL = (url: string) => BrowserOpenURL(url)

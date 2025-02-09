@@ -14,6 +14,9 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/storacha/fam/bucket"
 	"github.com/storacha/fam/store"
 	"github.com/storacha/go-ucanto/core/delegation"
@@ -57,7 +60,25 @@ func (a *App) startup(ctx context.Context) {
 		log.Fatalln("creating datastore: %w", err)
 	}
 
-	userdata, err := store.NewUserDataStore(ctx, dstore)
+	userdata, err := store.NewUserDataStore(
+		ctx,
+		dstore,
+		store.WithHostFactory(func(sk crypto.PrivKey) (host.Host, error) {
+			return libp2p.New(
+				libp2p.Identity(sk),
+				libp2p.ListenAddrStrings(
+					"/ip4/0.0.0.0/tcp/5225",
+					"/ip4/0.0.0.0/udp/5225/quic-v1",
+					"/ip4/0.0.0.0/udp/5225/quic-v1/webtransport",
+					"/ip4/0.0.0.0/udp/5225/webrtc-direct",
+					"/ip6/::/tcp/5225",
+					"/ip6/::/udp/5225/quic-v1",
+					"/ip6/::/udp/5225/quic-v1/webtransport",
+					"/ip6/::/udp/5225/webrtc-direct",
+				),
+			)
+		}),
+	)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -112,6 +133,25 @@ func (a *App) RemoveBucket(params string) error {
 		return err
 	}
 	return a.userdata.RemoveBucket(a.ctx, id)
+}
+
+func (a *App) ShareBucket(params string) (string, error) {
+	bucket, audience, err := unmarshalShareParams(params)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	d, err := a.userdata.ShareBucket(a.ctx, bucket, audience)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	bytes, err := io.ReadAll(d.Archive())
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	return marshalJSON(Bytes(bytes))
 }
 
 func (a *App) Root(params string) (string, error) {
@@ -356,6 +396,44 @@ func unmarshalPutParams(input string) (did.DID, string, ipld.Link, error) {
 	}
 
 	return id, key, value, nil
+}
+
+func unmarshalShareParams(input string) (did.DID, did.DID, error) {
+	np := basicnode.Prototype.Any
+	nb := np.NewBuilder()
+	err := dagjson.Decode(nb, bytes.NewReader([]byte(input)))
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("decoding params: %w", err)
+	}
+	n := nb.Build()
+
+	bn, err := n.LookupByString("bucket")
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("looking up bucket: %w", err)
+	}
+	bBytes, err := bn.AsBytes()
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("decoding bucket DID as bytes: %w", err)
+	}
+	bucket, err := did.Decode(bBytes)
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("decoding bucket DID: %w", err)
+	}
+
+	an, err := n.LookupByString("audience")
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("looking up audience: %w", err)
+	}
+	aBytes, err := an.AsBytes()
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("decoding bucket DID as bytes: %w", err)
+	}
+	audience, err := did.Decode(aBytes)
+	if err != nil {
+		return did.Undef, did.Undef, fmt.Errorf("decoding audience DID: %w", err)
+	}
+
+	return bucket, audience, nil
 }
 
 type EntriesOptions struct {
