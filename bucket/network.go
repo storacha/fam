@@ -7,6 +7,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/storacha/fam/remote"
 	"github.com/storacha/go-ucanto/core/delegation"
 	"github.com/storacha/go-ucanto/principal"
 	"github.com/storacha/go-ucanto/ucan"
@@ -25,7 +26,7 @@ func (cb *NetworkClockBucket[T]) Remotes(ctx context.Context) (Bucket[peer.AddrI
 	return cb.remotes, nil
 }
 
-func (cb *NetworkClockBucket[T]) Remote(ctx context.Context, name string) (Remote, error) {
+func (cb *NetworkClockBucket[T]) Remote(ctx context.Context, name string) (remote.Remote, error) {
 	remotes, err := cb.Remotes(ctx)
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func (cb *NetworkClockBucket[T]) Remote(ctx context.Context, name string) (Remot
 	if err != nil {
 		return nil, err
 	}
-	return &ClockRemote{cb.agentID, cb.bucketID, cb.proof, cb.bucket, remoteAddr, cb.host}, nil
+	return remote.NewClockRemote(cb.agentID, cb.bucketID, cb.proof, cb.bucket, remoteAddr, cb.host), nil
 }
 
 func (cb *NetworkClockBucket[T]) Head(ctx context.Context) ([]ipld.Link, error) {

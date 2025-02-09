@@ -12,6 +12,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/bucket/head"
+	ucanclock "github.com/storacha/fam/clock"
 	pail "github.com/storacha/go-pail"
 	"github.com/storacha/go-pail/clock"
 	"github.com/storacha/go-pail/crdt"
@@ -36,7 +37,7 @@ func (bucket *DsClockBucket) Head(ctx context.Context) ([]ipld.Link, error) {
 	return bucket.head, nil
 }
 
-func (bucket *DsClockBucket) Advance(ctx context.Context, evt ipld.Link, opts ...AdvanceOption) ([]ipld.Link, error) {
+func (bucket *DsClockBucket) Advance(ctx context.Context, evt ipld.Link, opts ...ucanclock.AdvanceOption) ([]ipld.Link, error) {
 	bucket.mutex.Lock()
 	defer bucket.mutex.Unlock()
 
@@ -46,15 +47,15 @@ func (bucket *DsClockBucket) Advance(ctx context.Context, evt ipld.Link, opts ..
 		}
 	}
 
-	var o advanceOptions
+	var o ucanclock.AdvanceOptions
 	for _, opt := range opts {
 		opt(&o)
 	}
 
 	mblocks := block.NewMapBlockstore()
 	var fetcher block.Fetcher = bucket.blocks
-	if o.fetcher != nil {
-		fetcher = block.NewTieredBlockFetcher(o.fetcher, bucket.blocks)
+	if o.Fetcher != nil {
+		fetcher = block.NewTieredBlockFetcher(o.Fetcher, bucket.blocks)
 	}
 	fetcher = block.NewCachingFetcher(fetcher, mblocks)
 
