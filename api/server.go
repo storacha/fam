@@ -1,4 +1,4 @@
-package clock
+package api
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/storacha/fam/api/capabilities/clock"
+	"github.com/storacha/fam/api/capabilities/test"
 	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/core/invocation"
 	"github.com/storacha/go-ucanto/core/receipt/fx"
@@ -22,52 +24,58 @@ func NewServer(agent principal.Signer, clocks ClockStore, host host.Host) (serve
 	return server.NewServer(
 		agent,
 		server.WithServiceMethod(
-			HeadAbility,
-			server.Provide(Head, func(cap ucan.Capability[HeadCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (Ok, fx.Effects, error) {
+			test.PingAbility,
+			server.Provide(test.Ping, func(ctx context.Context, cap ucan.Capability[test.PingCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (test.PingOk, fx.Effects, error) {
+				return test.PingOk{Message: cap.Nb().Message}, nil, nil
+			}),
+		),
+		server.WithServiceMethod(
+			clock.HeadAbility,
+			server.Provide(clock.Head, func(ctx context.Context, cap ucan.Capability[clock.HeadCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (clock.HeadOk, fx.Effects, error) {
 				id, err := did.Parse(cap.With())
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.HeadOk{}, nil, err
 				}
 
 				c, err := clocks.Get(context.TODO(), id)
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.HeadOk{}, nil, err
 				}
 
 				head, err := c.Head(context.TODO())
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.HeadOk{}, nil, err
 				}
 
-				return Ok{Head: head}, nil, nil
+				return clock.HeadOk{Head: head}, nil, nil
 			}),
 		),
 		server.WithServiceMethod(
-			AdvanceAbility,
-			server.Provide(Advance, func(cap ucan.Capability[AdvanceCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (Ok, fx.Effects, error) {
+			clock.AdvanceAbility,
+			server.Provide(clock.Advance, func(ctx context.Context, cap ucan.Capability[clock.AdvanceCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (clock.AdvanceOk, fx.Effects, error) {
 				id, err := did.Parse(cap.With())
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
 				c, err := clocks.Get(context.TODO(), id)
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
 				v, err := verifier.Parse(inv.Issuer().DID().String())
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
 				pk, err := crypto.UnmarshalEd25519PublicKey(v.Raw())
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
 				peerID, err := peer.IDFromPublicKey(pk)
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
 				client := http.Client{Transport: trustlessgateway.NewP2PTransport(host)}
@@ -76,10 +84,10 @@ func NewServer(agent principal.Signer, clocks ClockStore, host host.Host) (serve
 
 				head, err := c.Advance(context.TODO(), cap.Nb().Event, WithBlockFetcher(fetcher))
 				if err != nil {
-					return Ok{}, nil, err
+					return clock.AdvanceOk{}, nil, err
 				}
 
-				return Ok{Head: head}, nil, nil
+				return clock.AdvanceOk{Head: head}, nil, nil
 			}),
 		),
 	)

@@ -1,0 +1,66 @@
+package client
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/storacha/fam/api/capabilities/test"
+	"github.com/storacha/fam/api/capabilities/util"
+	"github.com/storacha/go-ucanto/client"
+	"github.com/storacha/go-ucanto/core/invocation"
+	"github.com/storacha/go-ucanto/core/result"
+	"github.com/storacha/go-ucanto/ucan"
+)
+
+type Client struct {
+	signer ucan.Signer
+	conn   client.Connection
+}
+
+// Ping the service sending the specified message. Returns the RTT.
+func (c *Client) Ping(ctx context.Context, msg string) (time.Duration, error) {
+	now := time.Now()
+	inv, err := test.Ping.Invoke(
+		c.signer,
+		c.conn.ID(),
+		c.signer.DID().String(),
+		test.PingCaveats{Message: msg},
+	)
+	if err != nil {
+		return time.Since(now), err
+	}
+	res, err := client.Execute(ctx, []invocation.Invocation{inv}, c.conn)
+	rtt := time.Since(now)
+	if err != nil {
+		return rtt, fmt.Errorf("executing ping invocation: %w", err)
+	}
+	rcptLink, ok := res.Get(inv.Link())
+	if !ok {
+		return rtt, fmt.Errorf("missing receipt for invocation: %s", inv.Link())
+	}
+	rcptReader, err := test.NewPingReceiptReader()
+	if err != nil {
+		return rtt, err
+	}
+	rcpt, err := rcptReader.Read(rcptLink, res.Blocks())
+	if err != nil {
+		return rtt, fmt.Errorf("reading receipt: %w", err)
+	}
+	o, x := result.Unwrap(rcpt.Out())
+	if x != nil {
+		f, err := util.BindFailure(x)
+		if err != nil {
+			return rtt, err
+		}
+		return rtt, fmt.Errorf("invocation failure: %+v", f)
+	}
+	if o.Message != msg {
+		return rtt, fmt.Errorf("pong message mismatch, expected: %s, received: %s", msg, o.Message)
+	}
+	return rtt, nil
+}
+
+func NewClient(signer ucan.Signer, connection client.Connection) *Client {
+	return &Client{signer: signer, conn: connection}
+}

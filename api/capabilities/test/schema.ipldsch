@@ -1,0 +1,7 @@
+type PingCaveats struct {
+	message String
+}
+
+type PingOk struct {
+	message String
+}

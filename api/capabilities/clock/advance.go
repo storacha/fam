@@ -1,47 +1,19 @@
 package clock
 
 import (
-	"fmt"
 
 	// for schema embed
 	_ "embed"
 
-	ipldprime "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	ipldschema "github.com/ipld/go-ipld-prime/schema"
 	"github.com/storacha/go-ucanto/core/ipld"
 	"github.com/storacha/go-ucanto/core/schema"
-	"github.com/storacha/go-ucanto/ucan"
 	"github.com/storacha/go-ucanto/validator"
 )
 
-//go:embed clock.ipldsch
-var clockSchema []byte
-
-var clockTS = mustLoadTS()
-
-func mustLoadTS() *ipldschema.TypeSystem {
-	ts, err := ipldprime.LoadSchemaBytes(clockSchema)
-	if err != nil {
-		panic(fmt.Errorf("loading clock schema: %w", err))
-	}
-	return ts
-}
-
-func HeadCaveatsType() ipldschema.Type {
-	return clockTS.TypeByName("HeadCaveats")
-}
-
-type HeadCaveats = ucan.NoCaveats
-
-const HeadAbility = "clock/head"
-
-var HeadCaveatsReader = schema.Struct[HeadCaveats](HeadCaveatsType(), nil)
-
-var Head = validator.NewCapability(AdvanceAbility, schema.DIDString(), HeadCaveatsReader, nil)
-
 func AdvanceCaveatsType() ipldschema.Type {
-	return clockTS.TypeByName("AdvanceCaveats")
+	return ts.TypeByName("AdvanceCaveats")
 }
 
 type AdvanceCaveats struct {
@@ -55,5 +27,15 @@ func (ac AdvanceCaveats) ToIPLD() (datamodel.Node, error) {
 const AdvanceAbility = "clock/advance"
 
 var AdvanceCaveatsReader = schema.Struct[AdvanceCaveats](AdvanceCaveatsType(), nil)
+
+type AdvanceOk struct {
+	Head []ipld.Link
+}
+
+func (ok AdvanceOk) ToIPLD() (ipld.Node, error) {
+	return ipld.WrapWithRecovery(&ok, OkType())
+}
+
+type AdvanceErr = ipld.Node
 
 var Advance = validator.NewCapability(AdvanceAbility, schema.DIDString(), AdvanceCaveatsReader, nil)

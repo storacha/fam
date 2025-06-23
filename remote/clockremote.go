@@ -8,7 +8,9 @@ import (
 	"github.com/alanshaw/ucanp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/storacha/fam/clock"
+	"github.com/storacha/fam/api"
+	"github.com/storacha/fam/api/capabilities/clock"
+	"github.com/storacha/fam/api/capabilities/util"
 	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/core/delegation"
@@ -24,7 +26,7 @@ type ClockRemote struct {
 	agent  principal.Signer
 	bucket ucan.Principal
 	proof  delegation.Proof
-	clock  clock.Clock
+	clock  api.Clock
 	remote peer.AddrInfo
 	host   host.Host
 }
@@ -67,12 +69,12 @@ func (r *ClockRemote) Push(ctx context.Context) error {
 		invs = append(invs, inv)
 	}
 
-	resp, err := client.Execute(invs, conn)
+	resp, err := client.Execute(ctx, invs, conn)
 	if err != nil {
 		return fmt.Errorf("executing invocations: %w", err)
 	}
 
-	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.Ok, clock.Err](clock.OkType(), clock.ErrType())
+	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.AdvanceOk, clock.AdvanceErr](clock.OkType(), clock.ErrType())
 	if err != nil {
 		return fmt.Errorf("creating receipt reader: %w", err)
 	}
@@ -90,7 +92,7 @@ func (r *ClockRemote) Push(ctx context.Context) error {
 
 		_, x := result.Unwrap(rcpt.Out())
 		if x != nil {
-			f, err := clock.BindFailure(x)
+			f, err := util.BindFailure(x)
 			if err != nil {
 				return err
 			}
@@ -126,12 +128,12 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 		return fmt.Errorf("issuing invocation: %w", err)
 	}
 
-	resp, err := client.Execute([]invocation.Invocation{inv}, conn)
+	resp, err := client.Execute(ctx, []invocation.Invocation{inv}, conn)
 	if err != nil {
 		return fmt.Errorf("executing invocations: %w", err)
 	}
 
-	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.Ok, clock.Err](clock.OkType(), clock.ErrType())
+	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.HeadOk, clock.HeadErr](clock.OkType(), clock.ErrType())
 	if err != nil {
 		return fmt.Errorf("creating receipt reader: %w", err)
 	}
@@ -148,7 +150,7 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 
 	o, x := result.Unwrap(rcpt.Out())
 	if x != nil {
-		f, err := clock.BindFailure(x)
+		f, err := util.BindFailure(x)
 		if err != nil {
 			return err
 		}
@@ -160,7 +162,7 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 	fetcher := trustlessgateway.NewClient(url, &client)
 
 	for _, event := range o.Head {
-		_, err := r.clock.Advance(ctx, event, clock.WithBlockFetcher(fetcher))
+		_, err := r.clock.Advance(ctx, event, api.WithBlockFetcher(fetcher))
 		if err != nil {
 			return fmt.Errorf("advancing clock: %w", err)
 		}
@@ -173,7 +175,7 @@ func NewClockRemote(
 	agent principal.Signer,
 	bucket ucan.Principal,
 	proof delegation.Proof,
-	clock clock.Clock,
+	clock api.Clock,
 	remoteAddr peer.AddrInfo,
 	host host.Host,
 ) *ClockRemote {
