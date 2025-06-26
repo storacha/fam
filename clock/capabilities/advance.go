@@ -1,7 +1,6 @@
-package clock
+package capabilities
 
 import (
-
 	// for schema embed
 	_ "embed"
 

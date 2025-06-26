@@ -1,13 +1,9 @@
 package util
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
-
-	leveldb "github.com/ipfs/go-ds-leveldb"
-	"github.com/storacha/fam/store"
 )
 
 func mkdirp(dirpath ...string) (string, error) {
@@ -32,16 +28,4 @@ func EnsureDataDir(dataDir string) string {
 		log.Fatalln("creating data directory: %w", err)
 	}
 	return dataDir
-}
-
-func UserDataStore(ctx context.Context, dataDir string, opts ...store.Option) *store.UserDataStore {
-	dstore, err := leveldb.NewDatastore(dataDir, nil)
-	if err != nil {
-		log.Fatalln("creating datastore: %w", err)
-	}
-	userdata, err := store.NewUserDataStore(ctx, dstore, opts...)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return userdata
 }

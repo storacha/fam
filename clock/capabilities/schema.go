@@ -1,12 +1,11 @@
-package clock
+package capabilities
 
 import (
-
 	// for schema embed
 	_ "embed"
 
 	ipldschema "github.com/ipld/go-ipld-prime/schema"
-	"github.com/storacha/fam/api/capabilities/util"
+	"github.com/storacha/fam/capabilities/util"
 )
 
 //go:embed schema.ipldsch

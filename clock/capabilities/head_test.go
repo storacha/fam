@@ -1,4 +1,4 @@
-package clock
+package capabilities
 
 import (
 	"bytes"
@@ -7,14 +7,11 @@ import (
 
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/storacha/fam/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRoundTripAdvanceCaveats(t *testing.T) {
-	nb := AdvanceCaveats{
-		Event: testutil.RandomLink(t),
-	}
+func TestRoundTripHeadCaveats(t *testing.T) {
+	nb := HeadCaveats{}
 
 	node, err := nb.ToIPLD()
 	require.NoError(t, err)
@@ -29,7 +26,7 @@ func TestRoundTripAdvanceCaveats(t *testing.T) {
 	err = dagjson.Decode(builder, buf)
 	require.NoError(t, err)
 
-	rnb, err := AdvanceCaveatsReader.Read(builder.Build())
+	rnb, err := HeadCaveatsReader.Read(builder.Build())
 	require.NoError(t, err)
 	require.Equal(t, nb, rnb)
 }

@@ -2,27 +2,39 @@ package api
 
 import (
 	"context"
-	crypto_ed25519 "crypto/ed25519"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"time"
 
+	leveldb "github.com/ipfs/go-ds-leveldb"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p"
+	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	famclient "github.com/storacha/fam/api/client"
+	"github.com/storacha/fam/block"
+	"github.com/storacha/fam/principal/ed25519/pem"
+	"github.com/storacha/fam/store"
+	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/did"
-	"github.com/storacha/go-ucanto/principal"
-	ed25519 "github.com/storacha/go-ucanto/principal/ed25519/signer"
-	"github.com/storacha/go-ucanto/transport/http"
+	ucaned "github.com/storacha/go-ucanto/principal/ed25519/signer"
+	ucanhttp "github.com/storacha/go-ucanto/transport/http"
+	"github.com/storacha/go-ucanto/ucan"
 )
 
 var bootLog = logging.Logger("api/bootstrap")
+
+var (
+	ErrNotRunning     = errors.New("service is not running")
+	ErrAlreadyRunning = errors.New("service is already running")
+)
 
 // ServiceInfo defines the service connection information.
 type ServiceInfo struct {
@@ -69,56 +81,38 @@ func readServiceInfo(dataDir string) (ServiceInfo, error) {
 	bootLog.Debugf("reading service info from: %s", infoPath)
 	data, err := os.ReadFile(infoPath)
 	if err != nil {
-		return ServiceInfo{}, fmt.Errorf("reading service information from %s: %w", infoPath, err)
+		return ServiceInfo{}, fmt.Errorf("reading file: %w", err)
 	}
 	var info ServiceInfo
 	err = json.Unmarshal(data, &info)
+	if err != nil {
+		return ServiceInfo{}, fmt.Errorf("marshaling JSON: %w", err)
+	}
 	return info, err
+}
+
+func writeServiceInfo(dataDir string, id ucan.Principal, url url.URL) error {
+	infoPath := serviceInfoPath(dataDir)
+	bootLog.Debugf("writing service info to: %s", infoPath)
+	info := ServiceInfo{ID: id.DID(), URL: url}
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("marshaling JSON: %w", err)
+	}
+	err = os.WriteFile(infoPath, data, 0777)
+	if err != nil {
+		return fmt.Errorf("writing file: %w", err)
+	}
+	return nil
+}
+
+func deleteServiceInfo(dataDir string) error {
+	infoPath := serviceInfoPath(dataDir)
+	return os.Remove(infoPath)
 }
 
 func privateKeyPath(dataDir string) string {
 	return path.Join(dataDir, "id.pem")
-}
-
-func readPrivateKey(dataDir string) (principal.Signer, error) {
-	pemData, err := os.ReadFile(privateKeyPath(dataDir))
-	if err != nil {
-		return nil, fmt.Errorf("reading private key: %w", err)
-	}
-
-	var privateKey *crypto_ed25519.PrivateKey
-	rest := pemData
-
-	// Loop until no more blocks
-	for {
-		block, remaining := pem.Decode(rest)
-		if block == nil {
-			// No more PEM blocks
-			break
-		}
-		rest = remaining
-
-		// Look for "PRIVATE KEY"
-		if block.Type == "PRIVATE KEY" {
-			parsedKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
-			}
-
-			// We expect a ed25519 private key, cast it
-			key, ok := parsedKey.(crypto_ed25519.PrivateKey)
-			if !ok {
-				return nil, fmt.Errorf("the parsed key is not an ED25519 private key")
-			}
-			privateKey = &key
-			break
-		}
-	}
-
-	if privateKey == nil {
-		return nil, fmt.Errorf("could not find a PRIVATE KEY block in the PEM file")
-	}
-	return ed25519.FromRaw(*privateKey)
 }
 
 func IsRunning(ctx context.Context, dataDir string) (bool, error) {
@@ -130,12 +124,12 @@ func IsRunning(ctx context.Context, dataDir string) (bool, error) {
 		}
 		return false, err
 	}
-	bootLog.Debugf("service info: %s (%s)", info.ID, info.URL)
-	conn, err := client.NewConnection(info.ID, http.NewHTTPChannel(&info.URL))
+	bootLog.Debugf("service info: %s (%s)", info.ID, info.URL.String())
+	conn, err := client.NewConnection(info.ID, ucanhttp.NewHTTPChannel(&info.URL))
 	if err != nil {
 		return false, err
 	}
-	signer, err := ed25519.Generate()
+	signer, err := ucaned.Generate()
 	if err != nil {
 		return false, err
 	}
@@ -152,27 +146,178 @@ func IsRunning(ctx context.Context, dataDir string) (bool, error) {
 }
 
 func Connect(ctx context.Context, dataDir string) (client.Connection, error) {
-	info, err := readServiceInfo(dataDir)
-	if err != nil {
-		return nil, err
-	}
-	return client.NewConnection(info.ID, http.NewHTTPChannel(&info.URL))
-}
-
-// Start either starts a new Fam API server or connects to an already
-// running instance.
-func Start(ctx context.Context, dataDir string) (client.Connection, error) {
 	running, err := IsRunning(ctx, dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("checking if API is already running: %w", err)
 	}
-	if running {
-		return Connect(ctx, dataDir)
+	if !running {
+		return nil, ErrNotRunning
 	}
-
-	signer, err := readPrivateKey(dataDir)
+	info, err := readServiceInfo(dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("reading private key: %w", err)
+		return nil, err
+	}
+	return client.NewConnection(info.ID, ucanhttp.NewHTTPChannel(&info.URL))
+}
+
+// Start either starts a new Fam API server.
+func Start(ctx context.Context, dataDir string) error {
+	running, err := IsRunning(ctx, dataDir)
+	if err != nil {
+		return fmt.Errorf("checking if API is already running: %w", err)
+	}
+	if running {
+		return ErrAlreadyRunning
 	}
 
+	id, err := pem.ReadPrivateKey(privateKeyPath(dataDir))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			s, err := ucaned.Generate()
+			if err != nil {
+				return fmt.Errorf("generating private key: %w", err)
+			}
+			err = pem.WritePrivateKey(privateKeyPath(dataDir), s)
+			if err != nil {
+				return fmt.Errorf("writing private key: %w", err)
+			}
+			id = s
+		} else {
+			return fmt.Errorf("reading private key: %w", err)
+		}
+	}
+
+	dstore, err := leveldb.NewDatastore(dataDir, nil)
+	if err != nil {
+		return fmt.Errorf("creating datastore: %w", err)
+	}
+
+	sk, err := p2pcrypto.UnmarshalEd25519PrivateKey(id.Raw())
+	if err != nil {
+		return err
+	}
+
+	host, err := libp2p.New(
+		libp2p.Identity(sk),
+		libp2p.ListenAddrStrings(
+			"/ip4/0.0.0.0/tcp/5225",
+			"/ip4/0.0.0.0/udp/5225/quic-v1",
+			"/ip4/0.0.0.0/udp/5225/quic-v1/webtransport",
+			"/ip4/0.0.0.0/udp/5225/webrtc-direct",
+			"/ip6/::/tcp/5225",
+			"/ip6/::/udp/5225/quic-v1",
+			"/ip6/::/udp/5225/quic-v1/webtransport",
+			"/ip6/::/udp/5225/webrtc-direct",
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("creating p2p host: %w", err)
+	}
+	p2pListener, err := trustlessgateway.NewP2PListener(host)
+	if err != nil {
+		return fmt.Errorf("creating p2p listener: %w", err)
+	}
+
+	userdata, err := store.NewUserDataStore(ctx, id, dstore, host)
+	if err != nil {
+		return fmt.Errorf("creating user data store: %w", err)
+	}
+
+	blocks := bucketBlockFetcher{userdata}
+
+	server, err := NewServer(id, userdata, host)
+	if err != nil {
+		return fmt.Errorf("creating UCAN API server: %w", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "🔥 fam %s\n", "v0.0.0") // TODO: add build version
+		fmt.Fprint(w, "- https://github.com/storacha/fam\n")
+		fmt.Fprintf(w, "- %s", server.ID().DID())
+	})
+	mux.HandleFunc("POST /", NewHandler(server))
+	mux.HandleFunc("GET /ipfs/{root}", trustlessgateway.NewHandler(&blocks))
+
+	go func() {
+		err := http.Serve(p2pListener, mux)
+		if !errors.Is(err, http.ErrServerClosed) {
+			bootLog.Error(err)
+		}
+	}()
+
+	tcpListener, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		return fmt.Errorf("creating TCP listener: %w", err)
+	}
+
+	url, err := url.Parse(fmt.Sprintf("http://%s", tcpListener.Addr().String()))
+	if err != nil {
+		return fmt.Errorf("parsing service URL: %w", err)
+	}
+
+	bootLog.Info("UCAN service:")
+	bootLog.Infof("  ID: %s", id.DID().String())
+	bootLog.Infof("  URL: %s", url.String())
+
+	bootLog.Info("P2P service:")
+	bootLog.Infof("  ID: %s", host.ID().String())
+	bootLog.Info("  Addrs:")
+
+	for _, a := range host.Addrs() {
+		bootLog.Infof("    %s", a.String())
+	}
+
+	// write the service info
+	err = writeServiceInfo(dataDir, id, *url)
+	if err != nil {
+		return fmt.Errorf("writing service info: %w", err)
+	}
+
+	httpServer := &http.Server{Handler: mux}
+
+	var stopErr error
+	go func() {
+		<-ctx.Done()
+		err = deleteServiceInfo(dataDir)
+		if err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("deleting service info: %w", err))
+		}
+		err = host.Close()
+		if err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("closing p2p host: %w", err))
+		}
+		err = httpServer.Shutdown(ctx)
+		if err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("shutting down HTTP server: %w", err))
+		}
+	}()
+
+	err = httpServer.Serve(tcpListener)
+	if !errors.Is(err, http.ErrServerClosed) {
+		stopErr = errors.Join(stopErr, fmt.Errorf("serving HTTP: %w", err))
+	}
+	return stopErr
+}
+
+type bucketBlockFetcher struct {
+	userdata *store.UserDataStore
+}
+
+func (bf *bucketBlockFetcher) Get(ctx context.Context, link ipld.Link) (block.Block, error) {
+	buckets, err := bf.userdata.Buckets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id := range buckets {
+		bs := bf.userdata.Blocks(id)
+		b, err := bs.Get(ctx, link)
+		if err == nil {
+			return b, nil
+		}
+		if !errors.Is(err, block.ErrNotFound) {
+			bootLog.Debugf("getting block: %w", err)
+		}
+	}
+	return nil, block.ErrNotFound
 }

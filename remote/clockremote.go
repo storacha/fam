@@ -8,9 +8,9 @@ import (
 	"github.com/alanshaw/ucanp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/storacha/fam/api"
-	"github.com/storacha/fam/api/capabilities/clock"
-	"github.com/storacha/fam/api/capabilities/util"
+	"github.com/storacha/fam/capabilities/util"
+	clock "github.com/storacha/fam/clock"
+	clockcaps "github.com/storacha/fam/clock/capabilities"
 	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/core/delegation"
@@ -26,7 +26,7 @@ type ClockRemote struct {
 	agent  principal.Signer
 	bucket ucan.Principal
 	proof  delegation.Proof
-	clock  api.Clock
+	clock  clock.Clock
 	remote peer.AddrInfo
 	host   host.Host
 }
@@ -61,8 +61,8 @@ func (r *ClockRemote) Push(ctx context.Context) error {
 
 	var invs []invocation.Invocation
 	for _, h := range head {
-		nb := clock.AdvanceCaveats{Event: h}
-		inv, err := clock.Advance.Invoke(r.agent, remotePrincipal, r.bucket.DID().String(), nb, delegation.WithProof(r.proof))
+		nb := clockcaps.AdvanceCaveats{Event: h}
+		inv, err := clockcaps.Advance.Invoke(r.agent, remotePrincipal, r.bucket.DID().String(), nb, delegation.WithProof(r.proof))
 		if err != nil {
 			return fmt.Errorf("issuing invocation: %w", err)
 		}
@@ -74,7 +74,7 @@ func (r *ClockRemote) Push(ctx context.Context) error {
 		return fmt.Errorf("executing invocations: %w", err)
 	}
 
-	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.AdvanceOk, clock.AdvanceErr](clock.OkType(), clock.ErrType())
+	rcptReader, err := receipt.NewReceiptReaderFromTypes[clockcaps.AdvanceOk, clockcaps.AdvanceErr](clockcaps.OkType(), clockcaps.ErrType())
 	if err != nil {
 		return fmt.Errorf("creating receipt reader: %w", err)
 	}
@@ -122,8 +122,8 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 		return fmt.Errorf("opening connection: %w", err)
 	}
 
-	nb := clock.HeadCaveats{}
-	inv, err := clock.Head.Invoke(r.agent, remotePrincipal, r.bucket.DID().String(), nb, delegation.WithProof(r.proof))
+	nb := clockcaps.HeadCaveats{}
+	inv, err := clockcaps.Head.Invoke(r.agent, remotePrincipal, r.bucket.DID().String(), nb, delegation.WithProof(r.proof))
 	if err != nil {
 		return fmt.Errorf("issuing invocation: %w", err)
 	}
@@ -133,7 +133,7 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 		return fmt.Errorf("executing invocations: %w", err)
 	}
 
-	rcptReader, err := receipt.NewReceiptReaderFromTypes[clock.HeadOk, clock.HeadErr](clock.OkType(), clock.ErrType())
+	rcptReader, err := receipt.NewReceiptReaderFromTypes[clockcaps.HeadOk, clockcaps.HeadErr](clockcaps.OkType(), clockcaps.ErrType())
 	if err != nil {
 		return fmt.Errorf("creating receipt reader: %w", err)
 	}
@@ -162,7 +162,7 @@ func (r *ClockRemote) Pull(ctx context.Context) error {
 	fetcher := trustlessgateway.NewClient(url, &client)
 
 	for _, event := range o.Head {
-		_, err := r.clock.Advance(ctx, event, api.WithBlockFetcher(fetcher))
+		_, err := r.clock.Advance(ctx, event, clock.WithBlockFetcher(fetcher))
 		if err != nil {
 			return fmt.Errorf("advancing clock: %w", err)
 		}
@@ -175,7 +175,7 @@ func NewClockRemote(
 	agent principal.Signer,
 	bucket ucan.Principal,
 	proof delegation.Proof,
-	clock api.Clock,
+	clock clock.Clock,
 	remoteAddr peer.AddrInfo,
 	host host.Host,
 ) *ClockRemote {

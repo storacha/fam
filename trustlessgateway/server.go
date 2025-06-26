@@ -13,8 +13,12 @@ import (
 
 const AcceptRaw = "application/vnd.ipld.raw"
 
-func NewServer(blocks block.Fetcher) (*http.ServeMux, error) {
+func NewServeMux(blocks block.Fetcher) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "🔥 fam IPFS Gateway %s\n", "v0.0.0") // TODO: add build version
+		fmt.Fprint(w, "- https://github.com/storacha/fam\n")
+	})
 	mux.HandleFunc("GET /ipfs/{root}", NewHandler(blocks))
 	mux.HandleFunc("GET /ipfs/{root}/{rest...}", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path traversal not implemented", http.StatusNotImplemented)
@@ -22,7 +26,7 @@ func NewServer(blocks block.Fetcher) (*http.ServeMux, error) {
 	return mux, nil
 }
 
-func NewHandler(blocks block.Fetcher) func(http.ResponseWriter, *http.Request) {
+func NewHandler(blocks block.Fetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !(isAcceptRaw(r) || isFormatRaw(r)) {
 			http.Error(w, "non-raw response not implemented", http.StatusNotImplemented)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/storacha/fam/api/capabilities/test"
-	"github.com/storacha/fam/api/capabilities/util"
+	"github.com/storacha/fam/capabilities/util"
+	ping "github.com/storacha/fam/ping/capabilities"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/core/invocation"
 	"github.com/storacha/go-ucanto/core/result"
@@ -21,11 +21,11 @@ type Client struct {
 // Ping the service sending the specified message. Returns the RTT.
 func (c *Client) Ping(ctx context.Context, msg string) (time.Duration, error) {
 	now := time.Now()
-	inv, err := test.Ping.Invoke(
+	inv, err := ping.Send.Invoke(
 		c.signer,
 		c.conn.ID(),
 		c.signer.DID().String(),
-		test.PingCaveats{Message: msg},
+		ping.SendCaveats{Message: msg},
 	)
 	if err != nil {
 		return time.Since(now), err
@@ -39,7 +39,7 @@ func (c *Client) Ping(ctx context.Context, msg string) (time.Duration, error) {
 	if !ok {
 		return rtt, fmt.Errorf("missing receipt for invocation: %s", inv.Link())
 	}
-	rcptReader, err := test.NewPingReceiptReader()
+	rcptReader, err := ping.NewSendReceiptReader()
 	if err != nil {
 		return rtt, err
 	}
