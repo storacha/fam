@@ -227,7 +227,7 @@ func (userdata *UserDataStore) Close() error {
 	return errors.Join(herr, derr)
 }
 
-func NewUserDataStore(ctx context.Context, id principal.Signer, dstore ds.Datastore, host host.Host) (*UserDataStore, error) {
+func NewUserDataStore(id principal.Signer, dstore ds.Datastore, host host.Host) (*UserDataStore, error) {
 	log.Debugln("creating grants bucket...")
 	grantshards, err := bucket.NewDsClockBucket(
 		block.NewDsBlockstore(namespace.Wrap(dstore, ds.NewKey("grants/blocks/"))),

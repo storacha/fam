@@ -33,7 +33,7 @@ type SendReceipt receipt.Receipt[SendOk, ipld.Node]
 type SendReceiptReader receipt.ReceiptReader[SendOk, ipld.Node]
 
 func NewSendReceiptReader() (SendReceiptReader, error) {
-	return receipt.NewReceiptReader[SendOk, ipld.Node](schemaBytes)
+	return receipt.NewReceiptReader[SendOk, ipld.Node](schemaBytes, types.Converters...)
 }
 
 var Send = validator.NewCapability(

@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/storacha/fam/api"
+	"github.com/storacha/fam/cmd/bucket"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/urfave/cli/v2"
 )
@@ -16,7 +18,7 @@ import (
 var log = logging.Logger("cmd")
 
 func main() {
-	logging.SetLogLevel("*", "info")
+	// logging.SetLogLevel("*", "info")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	app := &cli.App{
@@ -37,7 +39,7 @@ func main() {
 				Aliases: []string{"whoami"},
 				Action: func(cCtx *cli.Context) error {
 					datadir := util.EnsureDataDir(cCtx.String("datadir"))
-					id, err := util.Agent(util.AgentPrivateKeyPath(datadir))
+					id, err := util.AgentSigner(util.AgentPrivateKeyPath(datadir))
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -50,15 +52,33 @@ func main() {
 				Usage: "Start the daemon",
 				Action: func(cCtx *cli.Context) error {
 					datadir := util.EnsureDataDir(cCtx.String("datadir"))
-					err := api.Start(ctx, datadir)
+					srv, err := api.New(datadir)
+					if err != nil {
+						log.Fatal(err)
+					}
+					err = srv.Start(ctx)
 					if err != nil {
 						log.Fatal(err)
 					}
 					return nil
 				},
 			},
+			{
+				Name:  "ping",
+				Usage: "Ping the service",
+				Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+					msg := time.Now().Format(time.RFC3339)
+					fmt.Printf("PING %s: %d data bytes\n", fctx.Connection.ID().DID(), len(msg))
+					rtt, err := fctx.Client.Ping(ctx, msg)
+					if err != nil {
+						log.Fatal(err)
+					}
+					fmt.Printf("%d bytes from %s: time=%s\n", len(msg), fctx.Connection.ID().DID(), rtt.String())
+					return nil
+				}),
+			},
+			bucket.Commands(ctx),
 		},
-		// 	bucket.Command,
 		// 	{
 		// 		Name:      "del",
 		// 		Aliases:   []string{"delete"},
@@ -301,7 +321,8 @@ func main() {
 		select {
 		case <-interrupt:
 			fmt.Println()
-			log.Info("shutting down...")
+			fmt.Println("Received interrupt signal, shutting down...")
+			fmt.Println("(Hit ctrl-c again to force-shutdown the daemon.)")
 			cancel()
 		case <-ctx.Done():
 		}

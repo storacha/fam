@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	bucketcaps "github.com/storacha/fam/bucket/capabilities"
 	"github.com/storacha/fam/clock"
 	clockcaps "github.com/storacha/fam/clock/capabilities"
 	ping "github.com/storacha/fam/ping/capabilities"
@@ -63,8 +64,10 @@ func NewServeMux(server server.ServerView) (*http.ServeMux, error) {
 	return mux, nil
 }
 
-func NewHandler(server server.ServerView) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func NewPostHandler(server server.ServerView) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
 		res, err := server.Request(r.Context(), ucanhttp.NewHTTPRequest(r.Body, r.Header))
 		if err != nil {
 			log.Errorf("handling UCAN request: %w", err)
@@ -88,7 +91,7 @@ func NewHandler(server server.ServerView) http.HandlerFunc {
 			http.Error(w, "failed to send UCAN response", http.StatusInternalServerError)
 			return
 		}
-	})
+	}
 }
 
 // NewServer creates a new UCAN RPC server.
@@ -99,6 +102,20 @@ func NewServer(agent principal.Signer, userdata *store.UserDataStore, host host.
 			ping.SendAbility,
 			server.Provide(ping.Send, func(ctx context.Context, cap ucan.Capability[ping.SendCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (ping.SendOk, fx.Effects, error) {
 				return ping.SendOk{Message: cap.Nb().Message}, nil, nil
+			}),
+		),
+		server.WithServiceMethod(
+			bucketcaps.ListAbility,
+			server.Provide(bucketcaps.List, func(ctx context.Context, cap ucan.Capability[bucketcaps.ListCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (bucketcaps.ListOk, fx.Effects, error) {
+				buckets, err := userdata.Buckets(ctx)
+				if err != nil {
+					return bucketcaps.ListOk{}, nil, err
+				}
+				var results []bucketcaps.ListResult
+				for id := range buckets {
+					results = append(results, bucketcaps.ListResult{Id: id})
+				}
+				return bucketcaps.ListOk{Results: results}, nil, nil
 			}),
 		),
 		server.WithServiceMethod(

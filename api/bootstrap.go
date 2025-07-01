@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	leveldb "github.com/ipfs/go-ds-leveldb"
@@ -17,6 +18,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p"
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/multiformats/go-multiaddr"
 	famclient "github.com/storacha/fam/api/client"
 	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/principal/ed25519/pem"
@@ -24,7 +27,9 @@ import (
 	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/client"
 	"github.com/storacha/go-ucanto/did"
+	"github.com/storacha/go-ucanto/principal"
 	ucaned "github.com/storacha/go-ucanto/principal/ed25519/signer"
+	"github.com/storacha/go-ucanto/server"
 	ucanhttp "github.com/storacha/go-ucanto/transport/http"
 	"github.com/storacha/go-ucanto/ucan"
 )
@@ -34,6 +39,20 @@ var bootLog = logging.Logger("api/bootstrap")
 var (
 	ErrNotRunning     = errors.New("service is not running")
 	ErrAlreadyRunning = errors.New("service is already running")
+)
+
+var (
+	ucanServerURL  = "http://0.0.0.0:5224"
+	p2pListenAddrs = []string{
+		"/ip4/0.0.0.0/tcp/5225",
+		"/ip4/0.0.0.0/udp/5225/quic-v1",
+		"/ip4/0.0.0.0/udp/5225/quic-v1/webtransport",
+		"/ip4/0.0.0.0/udp/5225/webrtc-direct",
+		"/ip6/::/tcp/5225",
+		"/ip6/::/udp/5225/quic-v1",
+		"/ip6/::/udp/5225/quic-v1/webtransport",
+		"/ip6/::/udp/5225/webrtc-direct",
+	}
 )
 
 // ServiceInfo defines the service connection information.
@@ -115,6 +134,9 @@ func privateKeyPath(dataDir string) string {
 	return path.Join(dataDir, "id.pem")
 }
 
+// IsRunning determines whether the service is running by reading the service
+// info from the file in the passed data directory, and then trying to send a
+// ping message. If it isn't able to get a successful pong it will return false.
 func IsRunning(ctx context.Context, dataDir string) (bool, error) {
 	info, err := readServiceInfo(dataDir)
 	if err != nil {
@@ -133,7 +155,7 @@ func IsRunning(ctx context.Context, dataDir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	client := famclient.NewClient(signer, conn)
+	client := famclient.New(signer, conn, nil)
 	msg := time.Now().Format(time.RFC3339)
 	bootLog.Debugf("sending ping to verify run state...")
 	rtt, err := client.Ping(ctx, msg)
@@ -145,6 +167,7 @@ func IsRunning(ctx context.Context, dataDir string) (bool, error) {
 	return true, nil
 }
 
+// Connect will connect to the service if it is running.
 func Connect(ctx context.Context, dataDir string) (client.Connection, error) {
 	running, err := IsRunning(ctx, dataDir)
 	if err != nil {
@@ -160,24 +183,27 @@ func Connect(ctx context.Context, dataDir string) (client.Connection, error) {
 	return client.NewConnection(info.ID, ucanhttp.NewHTTPChannel(&info.URL))
 }
 
-// Start either starts a new Fam API server.
-func Start(ctx context.Context, dataDir string) error {
-	running, err := IsRunning(ctx, dataDir)
-	if err != nil {
-		return fmt.Errorf("checking if API is already running: %w", err)
-	}
-	if running {
-		return ErrAlreadyRunning
-	}
+type FamServer struct {
+	// config
+	dataDir        string
+	ucanServerURL  *url.URL
+	p2pListenAddrs []multiaddr.Multiaddr
+	// set after init
+	id         principal.Signer
+	userData   *store.UserDataStore
+	p2pHost    host.Host
+	ucanServer server.ServerView
+}
 
-	id, err := pem.ReadPrivateKey(privateKeyPath(dataDir))
+func (fs *FamServer) init() error {
+	id, err := pem.ReadPrivateKey(privateKeyPath(fs.dataDir))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			s, err := ucaned.Generate()
 			if err != nil {
 				return fmt.Errorf("generating private key: %w", err)
 			}
-			err = pem.WritePrivateKey(privateKeyPath(dataDir), s)
+			err = pem.WritePrivateKey(privateKeyPath(fs.dataDir), s)
 			if err != nil {
 				return fmt.Errorf("writing private key: %w", err)
 			}
@@ -187,7 +213,7 @@ func Start(ctx context.Context, dataDir string) error {
 		}
 	}
 
-	dstore, err := leveldb.NewDatastore(dataDir, nil)
+	dstore, err := leveldb.NewDatastore(fs.dataDir, nil)
 	if err != nil {
 		return fmt.Errorf("creating datastore: %w", err)
 	}
@@ -197,56 +223,72 @@ func Start(ctx context.Context, dataDir string) error {
 		return err
 	}
 
-	host, err := libp2p.New(
-		libp2p.Identity(sk),
-		libp2p.ListenAddrStrings(
-			"/ip4/0.0.0.0/tcp/5225",
-			"/ip4/0.0.0.0/udp/5225/quic-v1",
-			"/ip4/0.0.0.0/udp/5225/quic-v1/webtransport",
-			"/ip4/0.0.0.0/udp/5225/webrtc-direct",
-			"/ip6/::/tcp/5225",
-			"/ip6/::/udp/5225/quic-v1",
-			"/ip6/::/udp/5225/quic-v1/webtransport",
-			"/ip6/::/udp/5225/webrtc-direct",
-		),
-	)
+	host, err := libp2p.New(libp2p.Identity(sk))
 	if err != nil {
 		return fmt.Errorf("creating p2p host: %w", err)
 	}
-	p2pListener, err := trustlessgateway.NewP2PListener(host)
-	if err != nil {
-		return fmt.Errorf("creating p2p listener: %w", err)
-	}
 
-	userdata, err := store.NewUserDataStore(ctx, id, dstore, host)
+	userdata, err := store.NewUserDataStore(id, dstore, host)
 	if err != nil {
 		return fmt.Errorf("creating user data store: %w", err)
 	}
-
-	blocks := bucketBlockFetcher{userdata}
 
 	server, err := NewServer(id, userdata, host)
 	if err != nil {
 		return fmt.Errorf("creating UCAN API server: %w", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "🔥 fam %s\n", "v0.0.0") // TODO: add build version
-		fmt.Fprint(w, "- https://github.com/storacha/fam\n")
-		fmt.Fprintf(w, "- %s", server.ID().DID())
-	})
-	mux.HandleFunc("POST /", NewHandler(server))
-	mux.HandleFunc("GET /ipfs/{root}", trustlessgateway.NewHandler(&blocks))
+	fs.id = id
+	fs.p2pHost = host
+	fs.userData = userdata
+	fs.ucanServer = server
 
-	go func() {
-		err := http.Serve(p2pListener, mux)
-		if !errors.Is(err, http.ErrServerClosed) {
-			bootLog.Error(err)
+	return nil
+}
+
+// Connect attempts to connect to the service if it is running. If it is not
+// running then it will initialize the service and return a direct connection.
+func (fs *FamServer) Connect(ctx context.Context) (client.Connection, error) {
+	conn, err := Connect(ctx, fs.dataDir)
+	if err != nil {
+		if errors.Is(err, ErrNotRunning) {
+			err = fs.init()
+			if err != nil {
+				return nil, fmt.Errorf("initializing service: %w", err)
+			}
+			return client.NewConnection(fs.id, fs.ucanServer)
 		}
-	}()
+		return nil, err
+	}
+	return conn, nil
+}
 
-	tcpListener, err := net.Listen("tcp", "0.0.0.0:0")
+// Start will start the service if it is not already running.
+func (fs *FamServer) Start(ctx context.Context) error {
+	running, err := IsRunning(ctx, fs.dataDir)
+	if err != nil {
+		return fmt.Errorf("checking if API is already running: %w", err)
+	}
+	if running {
+		return ErrAlreadyRunning
+	}
+
+	err = fs.init()
+	if err != nil {
+		return fmt.Errorf("initializing service: %w", err)
+	}
+
+	err = fs.p2pHost.Network().Listen(fs.p2pListenAddrs...)
+	if err != nil {
+		return fmt.Errorf("listening on p2p addresses: %w", err)
+	}
+
+	p2pListener, err := trustlessgateway.NewP2PListener(fs.p2pHost)
+	if err != nil {
+		return fmt.Errorf("creating p2p listener: %w", err)
+	}
+
+	tcpListener, err := net.Listen("tcp", fs.ucanServerURL.Host)
 	if err != nil {
 		return fmt.Errorf("creating TCP listener: %w", err)
 	}
@@ -256,34 +298,49 @@ func Start(ctx context.Context, dataDir string) error {
 		return fmt.Errorf("parsing service URL: %w", err)
 	}
 
-	bootLog.Info("UCAN service:")
-	bootLog.Infof("  ID: %s", id.DID().String())
-	bootLog.Infof("  URL: %s", url.String())
-
-	bootLog.Info("P2P service:")
-	bootLog.Infof("  ID: %s", host.ID().String())
-	bootLog.Info("  Addrs:")
-
-	for _, a := range host.Addrs() {
-		bootLog.Infof("    %s", a.String())
-	}
-
 	// write the service info
-	err = writeServiceInfo(dataDir, id, *url)
+	err = writeServiceInfo(fs.dataDir, fs.id, *url)
 	if err != nil {
 		return fmt.Errorf("writing service info: %w", err)
 	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "🔥 fam %s\n", "v0.0.0") // TODO: add build version
+		fmt.Fprint(w, "- https://github.com/storacha/fam\n")
+		fmt.Fprintf(w, "- %s", fs.ucanServer.ID().DID())
+	})
+	mux.HandleFunc("OPTIONS /{_...}", func(w http.ResponseWriter, r *http.Request) {
+		headers := w.Header()
+		headers.Add("Access-Control-Allow-Origin", "*")
+		headers.Add("Vary", "Origin")
+		headers.Add("Vary", "Access-Control-Request-Method")
+		headers.Add("Vary", "Access-Control-Request-Headers")
+		headers.Add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+		headers.Add("Access-Control-Allow-Headers", "*")
+		headers.Add("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("POST /", NewPostHandler(fs.ucanServer))
+	mux.HandleFunc("GET /ipfs/{root}", trustlessgateway.NewHandler(&bucketBlockFetcher{fs.userData}))
+
+	go func() {
+		err := http.Serve(p2pListener, mux)
+		if !errors.Is(err, http.ErrServerClosed) {
+			bootLog.Error(err)
+		}
+	}()
 
 	httpServer := &http.Server{Handler: mux}
 
 	var stopErr error
 	go func() {
 		<-ctx.Done()
-		err = deleteServiceInfo(dataDir)
+		err = deleteServiceInfo(fs.dataDir)
 		if err != nil {
 			stopErr = errors.Join(stopErr, fmt.Errorf("deleting service info: %w", err))
 		}
-		err = host.Close()
+		err = fs.p2pHost.Close()
 		if err != nil {
 			stopErr = errors.Join(stopErr, fmt.Errorf("closing p2p host: %w", err))
 		}
@@ -293,11 +350,93 @@ func Start(ctx context.Context, dataDir string) error {
 		}
 	}()
 
+	homedir, _ := os.UserHomeDir()
+
+	fmt.Println(`
+▄▖     
+▙▖▀▌▛▛▌
+▌ █▌▌▌▌🍗🍟
+	`)
+	fmt.Println("Data directory:")
+	fmt.Printf("  %s\n", strings.Replace(fs.dataDir, homedir, "~", 1))
+	fmt.Println("UCAN service:")
+	fmt.Printf("  ID: %s\n", fs.id.DID().String())
+	fmt.Printf("  URL: %s\n", url.String())
+	fmt.Println("P2P service:")
+	fmt.Printf("  ID: %s\n", fs.p2pHost.ID().String())
+	fmt.Println("  Addrs:")
+	for _, a := range fs.p2pListenAddrs {
+		fmt.Printf("    %s\n", a.String())
+	}
+
 	err = httpServer.Serve(tcpListener)
 	if !errors.Is(err, http.ErrServerClosed) {
 		stopErr = errors.Join(stopErr, fmt.Errorf("serving HTTP: %w", err))
 	}
 	return stopErr
+}
+
+type config struct {
+	ucanServerURL  *url.URL
+	p2pListenAddrs []multiaddr.Multiaddr
+}
+
+type Option = func(c *config) error
+
+func WithUCANServerURL(serverURL string) Option {
+	return func(c *config) error {
+		url, err := url.Parse(serverURL)
+		if err != nil {
+			return fmt.Errorf("parsing UCAN server URL: %w", err)
+		}
+		c.ucanServerURL = url
+		return nil
+	}
+}
+
+func WithP2PListenAddrs(addrs ...string) Option {
+	return func(c *config) error {
+		for _, a := range addrs {
+			addr, err := multiaddr.NewMultiaddr(a)
+			if err != nil {
+				return fmt.Errorf("parsing multiaddr: %w", err)
+			}
+			c.p2pListenAddrs = append(c.p2pListenAddrs, addr)
+		}
+		return nil
+	}
+}
+
+func New(dataDir string, opts ...Option) (*FamServer, error) {
+	cfg := config{}
+	for _, o := range opts {
+		err := o(&cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if cfg.ucanServerURL == nil {
+		url, err := url.Parse(ucanServerURL)
+		if err != nil {
+			return nil, fmt.Errorf("parsing UCAN server URL: %w", err)
+		}
+		cfg.ucanServerURL = url
+	}
+	if len(cfg.p2pListenAddrs) == 0 {
+		for _, a := range p2pListenAddrs {
+			addr, err := multiaddr.NewMultiaddr(a)
+			if err != nil {
+				return nil, fmt.Errorf("parsing multiaddr: %w", err)
+			}
+			cfg.p2pListenAddrs = append(cfg.p2pListenAddrs, addr)
+		}
+	}
+
+	return &FamServer{
+		dataDir:        dataDir,
+		p2pListenAddrs: cfg.p2pListenAddrs,
+		ucanServerURL:  cfg.ucanServerURL,
+	}, nil
 }
 
 type bucketBlockFetcher struct {

@@ -15,8 +15,8 @@ func AgentPrivateKeyPath(dataDir string) string {
 	return path.Join(dataDir, "id.cli.pem")
 }
 
-// Agent gets the stored agent identity or generates a new one.
-func Agent(pemPath string) (principal.Signer, error) {
+// AgentSigner gets the stored agent identity or generates a new one.
+func AgentSigner(pemPath string) (principal.Signer, error) {
 	id, err := pem.ReadPrivateKey(pemPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -34,4 +34,13 @@ func Agent(pemPath string) (principal.Signer, error) {
 		}
 	}
 	return id, nil
+}
+
+func ServicePrivateKeyPath(dataDir string) string {
+	return path.Join(dataDir, "id.pem")
+}
+
+// ServiceSigner gets the stored service identity.
+func ServiceSigner(pemPath string) (principal.Signer, error) {
+	return pem.ReadPrivateKey(pemPath)
 }

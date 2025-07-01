@@ -1,0 +1,18 @@
+type ListCaveats struct {}
+
+type Result union {
+	| ListOk "ok"
+	| Err "error"
+} representation keyed
+
+type ListOk struct {
+	results [ListResult]
+}
+
+type ListResult struct {
+  id DID
+}
+
+type DID bytes
+
+type Err any
