@@ -2,13 +2,6 @@ type SendCaveats struct {
 	message String
 }
 
-type Result union {
-	| SendOk "ok"
-	| Err "error"
-} representation keyed
-
 type SendOk struct {
 	message String
 }
-
-type Err any

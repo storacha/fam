@@ -13,14 +13,30 @@ var schemaBytes []byte
 
 var ts = util.MustLoadSchema(schemaBytes)
 
-func ListCaveatsType() ipldschema.Type {
-	return ts.TypeByName("ListCaveats")
+func EntriesCaveatsType() ipldschema.Type {
+	return ts.TypeByName("EntriesCaveats")
 }
 
-func ListOkType() ipldschema.Type {
-	return ts.TypeByName("ListOk")
+func EntriesOkType() ipldschema.Type {
+	return ts.TypeByName("EntriesOk")
 }
 
-func ListResultType() ipldschema.Type {
-	return ts.TypeByName("ListResult")
+func EntriesErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}
+
+func EntryType() ipldschema.Type {
+	return ts.TypeByName("Entry")
+}
+
+func RootCaveatsType() ipldschema.Type {
+	return ts.TypeByName("RootCaveats")
+}
+
+func RootOkType() ipldschema.Type {
+	return ts.TypeByName("RootOk")
+}
+
+func RootErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
 }

@@ -1,18 +1,28 @@
-type ListCaveats struct {}
-
-type Result union {
-	| ListOk "ok"
-	| Err "error"
-} representation keyed
-
-type ListOk struct {
-	results [ListResult]
+type EntriesCaveats struct {
+  ID DID (rename "id")
+  root Link
+  pfx optional String
+  gt optional String 
+  gte optional String
+  lt optional String
+  lte optional String
+  limit optional Int
 }
 
-type ListResult struct {
-  id DID
+type EntriesOk struct {
+	results [Entry]
 }
 
-type DID bytes
+type Entry struct {
+  key String
+  value Link
+}
 
-type Err any
+type RootCaveats struct {
+  ID DID (rename "id")
+  timestamp ISO8601Date (rename "ts")
+}
+
+type RootOk struct {
+  root Link
+}

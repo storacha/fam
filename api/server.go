@@ -11,10 +11,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/storacha/fam/bucket"
 	bucketcaps "github.com/storacha/fam/bucket/capabilities"
+	bucketscaps "github.com/storacha/fam/buckets/capabilities"
 	"github.com/storacha/fam/clock"
 	clockcaps "github.com/storacha/fam/clock/capabilities"
-	ping "github.com/storacha/fam/ping/capabilities"
+	pingcaps "github.com/storacha/fam/ping/capabilities"
 	"github.com/storacha/fam/store"
 	"github.com/storacha/fam/trustlessgateway"
 	"github.com/storacha/go-ucanto/core/invocation"
@@ -99,23 +101,83 @@ func NewServer(agent principal.Signer, userdata *store.UserDataStore, host host.
 	return server.NewServer(
 		agent,
 		server.WithServiceMethod(
-			ping.SendAbility,
-			server.Provide(ping.Send, func(ctx context.Context, cap ucan.Capability[ping.SendCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (ping.SendOk, fx.Effects, error) {
-				return ping.SendOk{Message: cap.Nb().Message}, nil, nil
+			pingcaps.SendAbility,
+			server.Provide(pingcaps.Send, func(ctx context.Context, cap ucan.Capability[pingcaps.SendCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (pingcaps.SendOk, fx.Effects, error) {
+				return pingcaps.SendOk{Message: cap.Nb().Message}, nil, nil
 			}),
 		),
 		server.WithServiceMethod(
-			bucketcaps.ListAbility,
-			server.Provide(bucketcaps.List, func(ctx context.Context, cap ucan.Capability[bucketcaps.ListCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (bucketcaps.ListOk, fx.Effects, error) {
-				buckets, err := userdata.Buckets(ctx)
+			bucketscaps.ListAbility,
+			server.Provide(bucketscaps.List, func(ctx context.Context, cap ucan.Capability[bucketscaps.ListCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (bucketscaps.ListOk, fx.Effects, error) {
+				bks, err := userdata.Buckets(ctx)
 				if err != nil {
-					return bucketcaps.ListOk{}, nil, err
+					return bucketscaps.ListOk{}, nil, err
 				}
-				var results []bucketcaps.ListResult
-				for id := range buckets {
-					results = append(results, bucketcaps.ListResult{Id: id})
+				var results []bucketscaps.Bucket
+				for id := range bks {
+					results = append(results, bucketscaps.Bucket{ID: id})
 				}
-				return bucketcaps.ListOk{Results: results}, nil, nil
+				return bucketscaps.ListOk{Results: results}, nil, nil
+			}),
+		),
+		server.WithServiceMethod(
+			bucketcaps.RootAbility,
+			server.Provide(bucketcaps.Root, func(ctx context.Context, cap ucan.Capability[bucketcaps.RootCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (bucketcaps.RootOk, fx.Effects, error) {
+				bk, err := userdata.Bucket(ctx, cap.Nb().ID)
+				if err != nil {
+					return bucketcaps.RootOk{}, nil, err
+				}
+				root, err := bk.Root(ctx)
+				if err != nil {
+					return bucketcaps.RootOk{}, nil, err
+				}
+				return bucketcaps.RootOk{Root: root}, nil, nil
+			}),
+		),
+		server.WithServiceMethod(
+			bucketcaps.EntriesAbility,
+			server.Provide(bucketcaps.Entries, func(ctx context.Context, cap ucan.Capability[bucketcaps.EntriesCaveats], inv invocation.Invocation, iCtx server.InvocationContext) (bucketcaps.EntriesOk, fx.Effects, error) {
+				nb := cap.Nb()
+				bk, err := userdata.Bucket(ctx, nb.ID)
+				if err != nil {
+					return bucketcaps.EntriesOk{}, nil, err
+				}
+
+				opts := []bucket.EntriesOption{}
+				if nb.Prefix != nil {
+					opts = append(opts, bucket.WithKeyPrefix(*nb.Prefix))
+				}
+				if nb.GreaterThan != nil {
+					opts = append(opts, bucket.WithKeyGreaterThan(*nb.GreaterThan))
+				}
+				if nb.GreaterThanEqual != nil {
+					opts = append(opts, bucket.WithKeyGreaterThanOrEqual(*nb.GreaterThanEqual))
+				}
+				if nb.LessThan != nil {
+					opts = append(opts, bucket.WithKeyLessThan(*nb.LessThan))
+				}
+				if nb.LessThanEqual != nil {
+					opts = append(opts, bucket.WithKeyLessThanOrEqual(*nb.LessThanEqual))
+				}
+				limit := 1000
+				if nb.Limit != nil {
+					limit = *nb.Limit
+				}
+
+				i := 0
+				var entries []bucketcaps.Entry
+				for entry, err := range bk.Entries(ctx, opts...) {
+					if err != nil {
+						return bucketcaps.EntriesOk{}, nil, err
+					}
+					entries = append(entries, bucketcaps.Entry(entry))
+					i++
+					if i >= limit {
+						break
+					}
+				}
+
+				return bucketcaps.EntriesOk{Results: entries}, nil, nil
 			}),
 		),
 		server.WithServiceMethod(

@@ -10,7 +10,7 @@ import (
 	"github.com/storacha/go-ucanto/validator"
 )
 
-const ListAbility = "bucket/list"
+const ListAbility = "buckets/list"
 
 type ListCaveats struct{}
 
@@ -21,26 +21,26 @@ func (c ListCaveats) ToIPLD() (datamodel.Node, error) {
 var ListCaveatsReader = schema.Struct[ListCaveats](ListCaveatsType(), nil, types.Converters...)
 
 type ListOk struct {
-	Results []ListResult
+	Results []Bucket
 }
 
 func (ok ListOk) ToIPLD() (datamodel.Node, error) {
 	return ipld.WrapWithRecovery(&ok, ListOkType(), types.Converters...)
 }
 
-type ListResult struct {
-	Id did.DID
+type Bucket struct {
+	ID did.DID
 }
 
-func (r ListResult) ToIPLD() (datamodel.Node, error) {
-	return ipld.WrapWithRecovery(&r, ListResultType(), types.Converters...)
+func (r Bucket) ToIPLD() (datamodel.Node, error) {
+	return ipld.WrapWithRecovery(&r, BucketType(), types.Converters...)
 }
 
 type ListReceipt receipt.Receipt[ListOk, ipld.Node]
 type ListReceiptReader receipt.ReceiptReader[ListOk, ipld.Node]
 
 func NewListReceiptReader() (ListReceiptReader, error) {
-	return receipt.NewReceiptReader[ListOk, ipld.Node](schemaBytes, types.Converters...)
+	return receipt.NewReceiptReaderFromTypes[ListOk, ipld.Node](ListOkType(), ListErrType(), types.Converters...)
 }
 
 var List = validator.NewCapability(

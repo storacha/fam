@@ -1,0 +1,9 @@
+type ListCaveats struct {}
+
+type ListOk struct {
+	results [Bucket]
+}
+
+type Bucket struct {
+  ID DID (rename "id")
+}

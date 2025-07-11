@@ -20,3 +20,7 @@ func SendCaveatsType() ipldschema.Type {
 func SendOkType() ipldschema.Type {
 	return ts.TypeByName("SendOk")
 }
+
+func SendErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}
