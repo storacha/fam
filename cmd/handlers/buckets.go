@@ -1,62 +1,56 @@
-package buckets
+package handlers
 
 import (
 	"context"
 	"fmt"
 	"slices"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/storacha/fam/cmd/util"
+	"github.com/storacha/go-ucanto/core/delegation"
+	"github.com/storacha/go-ucanto/principal/ed25519/signer"
+	"github.com/storacha/go-ucanto/ucan"
 	"github.com/urfave/cli/v2"
 )
 
-var log = logging.Logger("buckets")
-
-func Commands(ctx context.Context) []*cli.Command {
+func Buckets(ctx context.Context) []*cli.Command {
 	return []*cli.Command{
 		{
 			Name:  "bucket",
 			Usage: "Manage buckets",
 			Subcommands: []*cli.Command{
-				// {
-				// 	Name:      "import",
-				// 	Usage:     "Import a shared bucket",
-				// 	Args:      true,
-				// 	ArgsUsage: "<grant>",
-				// 	Action: func(cCtx *cli.Context) error {
-				// 		datadir := util.EnsureDataDir(cCtx.String("datadir"))
-				// 		userdata := util.UserDataStore(context.Background(), datadir)
-				// 		arg := cCtx.Args().Get(0)
-				// 		// TODO: remove
-				// 		if arg == "" {
-				// 			issuer, _ := signer.Generate()
-				// 			audience, _ := userdata.ID(context.Background())
-				// 			d, _ := delegation.Delegate(
-				// 				issuer,
-				// 				audience,
-				// 				[]ucan.Capability[ucan.NoCaveats]{
-				// 					ucan.NewCapability("space/blob/*", issuer.DID().String(), ucan.NoCaveats{}),
-				// 					ucan.NewCapability("clock/*", issuer.DID().String(), ucan.NoCaveats{}),
-				// 				},
-				// 			)
-				// 			arg, _ = delegation.Format(d)
-				// 		}
-				// 		proof, err := delegation.Parse(arg)
-				// 		if err != nil {
-				// 			log.Fatal(err)
-				// 		}
-				// 		id, err := userdata.AddBucket(context.Background(), proof)
-				// 		if err != nil {
-				// 			log.Fatal(err)
-				// 		}
-				// 		fmt.Println(id)
-				// 		curr := util.GetCurrent(datadir)
-				// 		if curr == did.Undef {
-				// 			util.SetCurrent(datadir, id)
-				// 		}
-				// 		return nil
-				// 	},
-				// },
+				{
+					Name:      "import",
+					Usage:     "Import a shared bucket",
+					Args:      true,
+					ArgsUsage: "<grant>",
+					Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+						arg := cctx.Args().First()
+						// TODO: remove
+						if arg == "" {
+							issuer, _ := signer.Generate()
+							audience := fctx.ID
+							d, _ := delegation.Delegate(
+								issuer,
+								audience,
+								[]ucan.Capability[ucan.NoCaveats]{
+									ucan.NewCapability("space/blob/*", issuer.DID().String(), ucan.NoCaveats{}),
+									ucan.NewCapability("clock/*", issuer.DID().String(), ucan.NoCaveats{}),
+								},
+							)
+							arg, _ = delegation.Format(d)
+						}
+						proof, err := delegation.Parse(arg)
+						if err != nil {
+							log.Fatal(err)
+						}
+						id, err := fctx.Client.AddBucket(context.Background(), proof)
+						if err != nil {
+							log.Fatal(err)
+						}
+						fmt.Println(id)
+						return nil
+					}),
+				},
 				{
 					Name:    "ls",
 					Usage:   "List buckets",
@@ -150,33 +144,6 @@ func Commands(ctx context.Context) []*cli.Command {
 				// 			log.Fatal(err)
 				// 		}
 				// 		fmt.Printf("%s\n", s)
-				// 		return nil
-				// 	},
-				// },
-				// {
-				// 	Name:      "use",
-				// 	Usage:     "Use a bucket",
-				// 	Args:      true,
-				// 	ArgsUsage: "<id>",
-				// 	Action: func(cCtx *cli.Context) error {
-				// 		datadir := util.EnsureDataDir(cCtx.String("datadir"))
-				// 		userdata := util.UserDataStore(context.Background(), datadir)
-				// 		buckets, err := userdata.Buckets(context.Background())
-				// 		if err != nil {
-				// 			log.Fatal(err)
-				// 		}
-				// 		if len(buckets) == 0 {
-				// 			return fmt.Errorf("no buckets, use `fam bucket import`")
-				// 		}
-				// 		id, err := did.Parse(cCtx.Args().Get(0))
-				// 		if err != nil {
-				// 			return fmt.Errorf("parsing bucket DID: \"%s\"", cCtx.Args().Get(0))
-				// 		}
-				// 		if _, ok := buckets[id]; !ok {
-				// 			return fmt.Errorf("bucket not found: %s", id)
-				// 		}
-				// 		util.SetCurrent(datadir, id)
-				// 		fmt.Printf("* %s\n", id)
 				// 		return nil
 				// 	},
 				// },

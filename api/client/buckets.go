@@ -13,6 +13,60 @@ import (
 	"github.com/storacha/go-ucanto/did"
 )
 
+func (c *Client) AddBucket(ctx context.Context, proof delegation.Delegation) (did.DID, error) {
+	proofs, err := c.Proofs(buckets.AddAbility)
+	if err != nil {
+		return did.Undef, err
+	}
+
+	inv, err := buckets.Add.Invoke(
+		c.signer,
+		c.conn.ID(),
+		c.signer.DID().String(),
+		buckets.AddCaveats{Proof: proof.Link()},
+		delegation.WithProof(proofs...),
+	)
+	if err != nil {
+		return did.Undef, err
+	}
+
+	for b, err := range proof.Export() {
+		if err != nil {
+			return did.Undef, err
+		}
+		err = inv.Attach(b)
+		if err != nil {
+			return did.Undef, err
+		}
+	}
+
+	res, err := client.Execute(ctx, []invocation.Invocation{inv}, c.conn)
+	if err != nil {
+		return did.Undef, fmt.Errorf("executing %s invocation: %w", buckets.AddAbility, err)
+	}
+	rcptLink, ok := res.Get(inv.Link())
+	if !ok {
+		return did.Undef, fmt.Errorf("missing receipt for invocation: %s", inv.Link())
+	}
+	rcptReader, err := buckets.NewAddReceiptReader()
+	if err != nil {
+		return did.Undef, err
+	}
+	rcpt, err := rcptReader.Read(rcptLink, res.Blocks())
+	if err != nil {
+		return did.Undef, fmt.Errorf("reading receipt: %w", err)
+	}
+	o, x := result.Unwrap(rcpt.Out())
+	if x != nil {
+		f, err := util.BindFailure(x)
+		if err != nil {
+			return did.Undef, err
+		}
+		return did.Undef, fmt.Errorf("invocation failure: %+v", f)
+	}
+	return o.ID, nil
+}
+
 func (c *Client) Buckets(ctx context.Context) ([]did.DID, error) {
 	proofs, err := c.Proofs(buckets.ListAbility)
 	if err != nil {

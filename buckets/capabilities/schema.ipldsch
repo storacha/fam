@@ -7,3 +7,11 @@ type ListOk struct {
 type Bucket struct {
   ID DID (rename "id")
 }
+
+type AddCaveats struct {
+  proof Link
+}
+
+type AddOk struct {
+  ID DID (rename "id")
+}

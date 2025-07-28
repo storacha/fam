@@ -16,7 +16,7 @@ require (
 	github.com/multiformats/go-multicodec v0.9.1
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/storacha/go-pail v0.0.0-20250208141413-bd0b6432a0aa
-	github.com/storacha/go-ucanto v0.4.1
+	github.com/storacha/go-ucanto v0.4.2-0.20250728063926-ac58a27ef512
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
 	github.com/wailsapp/wails/v2 v2.9.2

@@ -40,3 +40,39 @@ func RootOkType() ipldschema.Type {
 func RootErrType() ipldschema.Type {
 	return ts.TypeByName("Any")
 }
+
+func PutCaveatsType() ipldschema.Type {
+	return ts.TypeByName("PutCaveats")
+}
+
+func PutOkType() ipldschema.Type {
+	return ts.TypeByName("PutOk")
+}
+
+func PutErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}
+
+func DeleteCaveatsType() ipldschema.Type {
+	return ts.TypeByName("DeleteCaveats")
+}
+
+func DeleteOkType() ipldschema.Type {
+	return ts.TypeByName("DeleteOk")
+}
+
+func DeleteErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}
+
+func GetCaveatsType() ipldschema.Type {
+	return ts.TypeByName("GetCaveats")
+}
+
+func GetOkType() ipldschema.Type {
+	return ts.TypeByName("GetOk")
+}
+
+func GetErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}

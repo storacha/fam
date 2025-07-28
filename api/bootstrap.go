@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/multiformats/go-multiaddr"
 	famclient "github.com/storacha/fam/api/client"
+	famserver "github.com/storacha/fam/api/server"
 	"github.com/storacha/fam/block"
 	"github.com/storacha/fam/principal/ed25519/pem"
 	"github.com/storacha/fam/store"
@@ -233,7 +234,7 @@ func (fs *FamServer) init() error {
 		return fmt.Errorf("creating user data store: %w", err)
 	}
 
-	server, err := NewServer(id, userdata, host)
+	server, err := famserver.NewServer(id, userdata, host)
 	if err != nil {
 		return fmt.Errorf("creating UCAN API server: %w", err)
 	}
@@ -305,23 +306,9 @@ func (fs *FamServer) Start(ctx context.Context) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "🔥 fam %s\n", "v0.0.0") // TODO: add build version
-		fmt.Fprint(w, "- https://github.com/storacha/fam\n")
-		fmt.Fprintf(w, "- %s", fs.ucanServer.ID().DID())
-	})
-	mux.HandleFunc("OPTIONS /{_...}", func(w http.ResponseWriter, r *http.Request) {
-		headers := w.Header()
-		headers.Add("Access-Control-Allow-Origin", "*")
-		headers.Add("Vary", "Origin")
-		headers.Add("Vary", "Access-Control-Request-Method")
-		headers.Add("Vary", "Access-Control-Request-Headers")
-		headers.Add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		headers.Add("Access-Control-Allow-Headers", "*")
-		headers.Add("Access-Control-Max-Age", "86400")
-		w.WriteHeader(http.StatusOK)
-	})
-	mux.HandleFunc("POST /", NewPostHandler(fs.ucanServer))
+	mux.HandleFunc("OPTIONS /{_...}", famserver.NewOptionsHandler())
+	mux.HandleFunc("GET /", famserver.NewGetHandler(fs.ucanServer))
+	mux.HandleFunc("POST /", famserver.NewPostHandler(fs.ucanServer))
 	mux.HandleFunc("GET /ipfs/{root}", trustlessgateway.NewHandler(&bucketBlockFetcher{fs.userData}))
 
 	go func() {

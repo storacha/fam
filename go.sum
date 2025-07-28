@@ -619,6 +619,8 @@ github.com/storacha/go-pail v0.0.0-20250208141413-bd0b6432a0aa h1:P3LNVJKiTOI5cv
 github.com/storacha/go-pail v0.0.0-20250208141413-bd0b6432a0aa/go.mod h1:S7/+o5mjNON4Z/XQoeou76+4k7IRzsR4Bm8WXIQrVYc=
 github.com/storacha/go-ucanto v0.4.1 h1:yas0Ob0l7aV4JDUS5WZiNV73ov6/9qPkuKseTIBCAkY=
 github.com/storacha/go-ucanto v0.4.1/go.mod h1:/I6qtE+oDHc+6lBc/glN+RFx0cbP/mDj4gihD7YezWc=
+github.com/storacha/go-ucanto v0.4.2-0.20250728063926-ac58a27ef512 h1:i611BimUSH06nznUv4tg3geOS8SNgbdhGQzNyNaWNVM=
+github.com/storacha/go-ucanto v0.4.2-0.20250728063926-ac58a27ef512/go.mod h1:/I6qtE+oDHc+6lBc/glN+RFx0cbP/mDj4gihD7YezWc=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=

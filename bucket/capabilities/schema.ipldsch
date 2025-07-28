@@ -26,3 +26,35 @@ type RootCaveats struct {
 type RootOk struct {
   root Link
 }
+
+type PutCaveats struct {
+  ID DID (rename "id")
+  root Link
+  key String
+  value Link
+}
+
+type PutOk struct {
+  root Link
+}
+
+type DeleteCaveats struct {
+  ID DID (rename "id")
+  root Link
+  key String
+  value Link
+}
+
+type DeleteOk struct {
+  root Link
+}
+
+type GetCaveats struct {
+  ID DID (rename "id")
+  root Link
+  key String
+}
+
+type GetOk struct {
+  value Link
+}

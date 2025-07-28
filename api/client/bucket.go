@@ -38,7 +38,53 @@ type Bucket struct {
 }
 
 func (b *Bucket) Del(ctx context.Context, key string) error {
-	panic("unimplemented")
+	root, err := b.Root(ctx)
+	if err != nil {
+		return err
+	}
+	proofs, err := b.Proofs(bucketcaps.DeleteAbility)
+	if err != nil {
+		return err
+	}
+	inv, err := bucketcaps.Delete.Invoke(
+		b.signer,
+		b.conn.ID(),
+		b.signer.DID().String(),
+		bucketcaps.DeleteCaveats{
+			ID:   b.id,
+			Root: root,
+			Key:  key,
+		},
+		delegation.WithProof(proofs...),
+	)
+	if err != nil {
+		return err
+	}
+	res, err := client.Execute(ctx, []invocation.Invocation{inv}, b.conn)
+	if err != nil {
+		return fmt.Errorf("executing %s invocation: %w", bucketcaps.DeleteAbility, err)
+	}
+	rcptLink, ok := res.Get(inv.Link())
+	if !ok {
+		return fmt.Errorf("missing receipt for invocation: %s", inv.Link())
+	}
+	rcptReader, err := bucketcaps.NewDeleteReceiptReader()
+	if err != nil {
+		return err
+	}
+	rcpt, err := rcptReader.Read(rcptLink, res.Blocks())
+	if err != nil {
+		return fmt.Errorf("reading receipt: %w", err)
+	}
+	_, x := result.Unwrap(rcpt.Out())
+	if x != nil {
+		f, err := util.BindFailure(x)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("invocation failure: %+v", f)
+	}
+	return nil
 }
 
 func (b *Bucket) Entries(ctx context.Context, opts ...bucket.EntriesOption) iter.Seq2[bucket.Entry[ipld.Link], error] {
@@ -106,11 +152,107 @@ func (b *Bucket) Entries(ctx context.Context, opts ...bucket.EntriesOption) iter
 }
 
 func (b *Bucket) Get(ctx context.Context, key string) (ipld.Link, error) {
-	panic("unimplemented")
+	root, err := b.Root(ctx)
+	if err != nil {
+		return nil, err
+	}
+	proofs, err := b.Proofs(bucketcaps.PutAbility)
+	if err != nil {
+		return nil, err
+	}
+	inv, err := bucketcaps.Get.Invoke(
+		b.signer,
+		b.conn.ID(),
+		b.signer.DID().String(),
+		bucketcaps.GetCaveats{
+			ID:   b.id,
+			Root: root,
+			Key:  key,
+		},
+		delegation.WithProof(proofs...),
+	)
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.Execute(ctx, []invocation.Invocation{inv}, b.conn)
+	if err != nil {
+		return nil, fmt.Errorf("executing %s invocation: %w", bucketcaps.PutAbility, err)
+	}
+	rcptLink, ok := res.Get(inv.Link())
+	if !ok {
+		return nil, fmt.Errorf("missing receipt for invocation: %s", inv.Link())
+	}
+	rcptReader, err := bucketcaps.NewGetReceiptReader()
+	if err != nil {
+		return nil, err
+	}
+	rcpt, err := rcptReader.Read(rcptLink, res.Blocks())
+	if err != nil {
+		return nil, fmt.Errorf("reading receipt: %w", err)
+	}
+	o, x := result.Unwrap(rcpt.Out())
+	if x != nil {
+		f, err := util.BindFailure(x)
+		if err != nil {
+			return nil, err
+		}
+		if *f.Name == "NotFound" {
+			return nil, bucket.ErrNotFound
+		}
+		return nil, fmt.Errorf("invocation failure: %+v", f)
+	}
+	return o.Value, nil
 }
 
 func (b *Bucket) Put(ctx context.Context, key string, value ipld.Link) error {
-	panic("unimplemented")
+	root, err := b.Root(ctx)
+	if err != nil {
+		return err
+	}
+	proofs, err := b.Proofs(bucketcaps.PutAbility)
+	if err != nil {
+		return err
+	}
+	inv, err := bucketcaps.Put.Invoke(
+		b.signer,
+		b.conn.ID(),
+		b.signer.DID().String(),
+		bucketcaps.PutCaveats{
+			ID:    b.id,
+			Root:  root,
+			Key:   key,
+			Value: value,
+		},
+		delegation.WithProof(proofs...),
+	)
+	if err != nil {
+		return err
+	}
+	res, err := client.Execute(ctx, []invocation.Invocation{inv}, b.conn)
+	if err != nil {
+		return fmt.Errorf("executing %s invocation: %w", bucketcaps.PutAbility, err)
+	}
+	rcptLink, ok := res.Get(inv.Link())
+	if !ok {
+		return fmt.Errorf("missing receipt for invocation: %s", inv.Link())
+	}
+	rcptReader, err := bucketcaps.NewPutReceiptReader()
+	if err != nil {
+		return err
+	}
+	rcpt, err := rcptReader.Read(rcptLink, res.Blocks())
+	if err != nil {
+		return fmt.Errorf("reading receipt: %w", err)
+	}
+	_, x := result.Unwrap(rcpt.Out())
+	if x != nil {
+		f, err := util.BindFailure(x)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("invocation failure: %+v", f)
+	}
+	return nil
 }
 
 func (b *Bucket) Root(ctx context.Context) (ipld.Link, error) {

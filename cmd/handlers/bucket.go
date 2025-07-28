@@ -1,24 +1,26 @@
-package bucket
+package handlers
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/storacha/fam/bucket"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/storacha/go-ucanto/did"
 	"github.com/urfave/cli/v2"
 )
 
-var log = logging.Logger("bucket")
+var log = logging.Logger("cmd/handlers")
 
-func Commands(ctx context.Context) []*cli.Command {
+func Bucket(ctx context.Context) []*cli.Command {
 	return []*cli.Command{
 		{
 			Name:      "ls",
-			Aliases:   []string{"list", "entries"},
+			Aliases:   []string{"entries"},
 			Usage:     "List bucket entries",
 			Args:      true,
 			ArgsUsage: "<id>",
@@ -100,11 +102,51 @@ func Commands(ctx context.Context) []*cli.Command {
 			}),
 		},
 		{
+			Name:      "put",
+			Usage:     "Put a value to the bucket",
+			Args:      true,
+			ArgsUsage: "<id> <key> <value>",
+			Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+				if cctx.Args().First() == "" {
+					log.Fatal(errors.New("missing bucket DID"))
+				}
+				id, err := did.Parse(cctx.Args().First())
+				if err != nil {
+					log.Fatal(err)
+				}
+				key := cctx.Args().Get(1)
+				if key == "" {
+					return fmt.Errorf("missing key")
+				}
+				value, err := cid.Parse(cctx.Args().Get(2))
+				if err != nil {
+					return fmt.Errorf("invalid value: %w", err)
+				}
+				bk, err := fctx.Client.Bucket(ctx, id)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = bk.Put(context.Background(), key, cidlink.Link{Cid: value})
+				if err != nil {
+					log.Fatal(err)
+				}
+				root, err := bk.Root(context.Background())
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Println(root.String())
+				return nil
+			}),
+		},
+		{
 			Name:      "root",
 			Usage:     "Derive the current root CID for the bucket.",
 			Args:      true,
 			ArgsUsage: "<id>",
 			Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+				if cctx.Args().First() == "" {
+					log.Fatal(errors.New("missing bucket DID"))
+				}
 				id, err := did.Parse(cctx.Args().First())
 				if err != nil {
 					log.Fatal(err)
@@ -121,39 +163,72 @@ func Commands(ctx context.Context) []*cli.Command {
 				return nil
 			}),
 		},
-		// 	{
-		// 		Name:      "del",
-		// 		Aliases:   []string{"delete"},
-		// 		Usage:     "Delete an entry from a bucket",
-		// 		Args:      true,
-		// 		ArgsUsage: "<key>",
-		// 		Action: func(cCtx *cli.Context) error {
-		// 			datadir := util.EnsureDataDir(cCtx.String("datadir"))
-		// 			userdata := util.UserDataStore(context.Background(), datadir)
-		// 			curr := util.GetCurrent(datadir)
-		// 			if curr == did.Undef {
-		// 				return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
-		// 			}
-		// 			bk, err := userdata.Bucket(context.Background(), curr)
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			key := cCtx.Args().Get(0)
-		// 			if key == "" {
-		// 				return fmt.Errorf("missing key")
-		// 			}
-		// 			err = bk.Del(context.Background(), key)
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			root, err := bk.Root(context.Background())
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			fmt.Println(root.String())
-		// 			return nil
-		// 		},
-		// 	},
+		{
+			Name:      "rm",
+			Aliases:   []string{"delete"},
+			Usage:     "Delete an entry from a bucket",
+			Args:      true,
+			ArgsUsage: "<id> <key>",
+			Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+				if cctx.Args().First() == "" {
+					log.Fatal(errors.New("missing bucket DID"))
+				}
+				id, err := did.Parse(cctx.Args().First())
+				if err != nil {
+					log.Fatal(err)
+				}
+				key := cctx.Args().Get(1)
+				if key == "" {
+					return fmt.Errorf("missing key")
+				}
+				bk, err := fctx.Client.Bucket(ctx, id)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = bk.Del(context.Background(), key)
+				if err != nil {
+					log.Fatal(err)
+				}
+				root, err := bk.Root(context.Background())
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Println(root.String())
+				return nil
+			}),
+		},
+		{
+			Name:      "get",
+			Usage:     "Get a value from the bucket",
+			Args:      true,
+			ArgsUsage: "<id> <key>",
+			Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
+				if cctx.Args().First() == "" {
+					log.Fatal(errors.New("missing bucket DID"))
+				}
+				id, err := did.Parse(cctx.Args().First())
+				if err != nil {
+					log.Fatal(err)
+				}
+				key := cctx.Args().Get(1)
+				if key == "" {
+					return fmt.Errorf("missing key")
+				}
+				bk, err := fctx.Client.Bucket(ctx, id)
+				if err != nil {
+					log.Fatal(err)
+				}
+				val, err := bk.Get(context.Background(), key)
+				if err != nil {
+					if errors.Is(err, bucket.ErrNotFound) {
+						return err
+					}
+					log.Fatal(err)
+				}
+				fmt.Println(val.String())
+				return nil
+			}),
+		},
 		// 	{
 		// 		Name:      "pull",
 		// 		Usage:     "Pull changes from a remote",
@@ -237,42 +312,6 @@ func Commands(ctx context.Context) []*cli.Command {
 		// 			} else {
 		// 				return fmt.Errorf("bucket is not a networker")
 		// 			}
-		// 			return nil
-		// 		},
-		// 	},
-		// 	{
-		// 		Name:      "put",
-		// 		Usage:     "Put a value to the bucket",
-		// 		Args:      true,
-		// 		ArgsUsage: "<key> <value>",
-		// 		Action: func(cCtx *cli.Context) error {
-		// 			datadir := util.EnsureDataDir(cCtx.String("datadir"))
-		// 			userdata := util.UserDataStore(context.Background(), datadir)
-		// 			curr := util.GetCurrent(datadir)
-		// 			if curr == did.Undef {
-		// 				return fmt.Errorf("no bucket selected, use `fam bucket use <did>`")
-		// 			}
-		// 			bk, err := userdata.Bucket(context.Background(), curr)
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			key := cCtx.Args().Get(0)
-		// 			if key == "" {
-		// 				return fmt.Errorf("missing key")
-		// 			}
-		// 			value, err := cid.Parse(cCtx.Args().Get(1))
-		// 			if err != nil {
-		// 				return fmt.Errorf("invalid value: %w", err)
-		// 			}
-		// 			err = bk.Put(context.Background(), key, cidlink.Link{Cid: value})
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			root, err := bk.Root(context.Background())
-		// 			if err != nil {
-		// 				log.Fatal(err)
-		// 			}
-		// 			fmt.Println(root.String())
 		// 			return nil
 		// 		},
 		// 	},

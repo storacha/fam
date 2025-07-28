@@ -6,12 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/storacha/fam/api"
-	"github.com/storacha/fam/cmd/bucket"
-	"github.com/storacha/fam/cmd/buckets"
+	"github.com/storacha/fam/cmd/handlers"
 	"github.com/storacha/fam/cmd/util"
 	"github.com/urfave/cli/v2"
 )
@@ -55,23 +53,10 @@ func main() {
 				return nil
 			},
 		},
-		{
-			Name:  "ping",
-			Usage: "Ping the service",
-			Action: util.WithContext(ctx, func(cctx *cli.Context, fctx *util.Context) error {
-				msg := time.Now().Format(time.RFC3339)
-				fmt.Printf("PING %s: %d data bytes\n", fctx.Connection.ID().DID(), len(msg))
-				rtt, err := fctx.Client.Ping(ctx, msg)
-				if err != nil {
-					log.Fatal(err)
-				}
-				fmt.Printf("%d bytes from %s: time=%s\n", len(msg), fctx.Connection.ID().DID(), rtt.String())
-				return nil
-			}),
-		},
 	}
-	commands = append(commands, buckets.Commands(ctx)...)
-	commands = append(commands, bucket.Commands(ctx)...)
+	commands = append(commands, handlers.Bucket(ctx)...)
+	commands = append(commands, handlers.Buckets(ctx)...)
+	commands = append(commands, handlers.Ping(ctx)...)
 
 	app := &cli.App{
 		Name:  "fam",

@@ -28,3 +28,15 @@ func ListErrType() ipldschema.Type {
 func BucketType() ipldschema.Type {
 	return ts.TypeByName("Bucket")
 }
+
+func AddCaveatsType() ipldschema.Type {
+	return ts.TypeByName("AddCaveats")
+}
+
+func AddOkType() ipldschema.Type {
+	return ts.TypeByName("AddOk")
+}
+
+func AddErrType() ipldschema.Type {
+	return ts.TypeByName("Any")
+}
